@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>Login</title>
+        <link rel="stylesheet" type="text/css" href="CSS/classes.css">
+        <link rel="stylesheet" type="text/css" href="CSS/ids.css">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+        <script src="JS/functions.js"></script>
+    </head>
+    <body>
+	<div style="position:fixed; top: 0px; left: 0px; height: 100vh; width: 100vw; background: url('/test.jpg') center center; background-size: 150% auto;"></div>
+        <div class="fixed-header banner alert error-alert" id="login-error-alert"><div class="header-1 alert-font-color banner-text" id="error-text"></div></div>
+        <div class="login-pane center-pane">
+            <div class="header-relative">
+                <div class="header-1" id="login-header-container">Test Login Page</div>
+            </div>
+            <form action="Authenticate" method="post" id="login-form">
+                <table class="center-pane" id="login-table">
+                    <tr>
+                        <td>
+                            <input class="login-input" id="login-username" name="username" value="" placeholder="Username" type="text">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input class="login-input" id="login-password" name="password" value="" placeholder="Password" type="password">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input class="login-input" id="login-submit-button" name="submit-button" value="Submit" type="button">
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+    </body>
+    <script src="JS/script.js"></script>
+    <script>
+        document.getElementById("login-submit-button").onclick = async function()
+        {
+            if((document.getElementById("login-username").value !== "") && (document.getElementById("login-password").value !== ""))
+            {
+                document.getElementById("login-form").submit();
+            }
+            else if((document.getElementById("login-username").value === "") && (document.getElementById("login-password").value === ""))
+            {
+                error_alert("The username and pasword fields are required.");
+                document.getElementById("login-username").style.backgroundColor= "#ff7a7a";
+                document.getElementById("login-password").style.backgroundColor= "#ff7a7a";
+                await sleep(5000);
+                document.getElementById("login-username").style.backgroundColor= "#FFFFFF";
+                document.getElementById("login-password").style.backgroundColor= "#FFFFFF";
+            }
+            else if((document.getElementById("login-username").value === "") && (document.getElementById("login-password").value !== ""))
+            {
+                console.log();
+                error_alert("The username field is required.");
+                document.getElementById("login-username").style.backgroundColor= "#ff7a7a";
+                await sleep(5000);
+                document.getElementById("login-username").style.backgroundColor= "#FFFFFF";
+            }
+            else if((document.getElementById("login-username").value !== "") && (document.getElementById("login-password").value === ""))
+            {
+                error_alert("The password field is required.");
+                document.getElementById("login-password").style.backgroundColor= "#ff7a7a";
+                await sleep(5000);
+                document.getElementById("login-password").style.backgroundColor= "#FFFFFF";
+            }
+        };
+    </script>
+</html>

@@ -1,0 +1,509 @@
+/*
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+*/
+/* 
+    Created on : Sep 5, 2018, 8:31:39 AM
+    Author     : cab020418
+*/
+
+#home-page-wrap
+{
+    height: 100vh;
+    width: 100vw;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+
+#app-container
+{
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 111px;
+    left: 0px;
+}
+
+#data-containers
+{
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+
+#data-containers-table
+{
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+
+#content-container-cell
+{
+    width: 776px;
+}
+
+table, tr, td
+{
+    padding: 0px;
+    margin: 0px;
+    border-collapse: collapse;
+}
+
+#object-data-container
+{
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: -2px;
+    left: 0px;
+}
+
+#object-information-container-cell
+{
+    height: 33.3333333vh;
+}
+
+#object-contents-container
+{
+    height: 100%;
+    width: 100%;
+    position: relative;
+    top: 0px;
+    left: 0px;
+    background: url("Pictures/white_transparent_background_2.png") center center;
+}
+
+#object-information-container
+{
+    height: 100%;
+    width: 100%;
+    position: relative;
+    top: 0px;
+    left: 0px;
+    background: url("Pictures/white_transparent_background_2.png") center center;
+    border-top: 1px solid black;
+}
+
+#drag-region
+{
+    height: 3px;
+    width: 100%;
+    position: relative;
+    top: 0px;
+    left: 0px;
+    cursor: row-resize;
+}
+
+#group-information-container
+{
+    min-width: 610px;
+    position: relative;
+    top: 0px;
+    left: 0px;
+}
+
+#login-table
+{
+    top: 55px;
+    height: 233px;
+    width: 377px;
+}
+
+#login-header-container
+{
+    color: white;
+    font-size: 200%;
+    position: relative;
+    top: 40px;
+}
+
+#error-header-container
+{
+    position: relative;
+    top: 50px;
+}
+
+#login-submit-button
+{
+    width: 383px;
+}
+
+#nav-bar
+{
+    border-bottom: 1px solid black;
+    z-index: 1000;
+    width: 100%;
+}
+
+#nav-bar-logo
+{
+    height: 15px;
+    width: 100%;
+    top: 15px;
+    left: 0px;
+}
+
+#logo-container
+{
+    height: 54px;
+    width: 277px;
+    position: fixed;
+    top: 0px;
+    left: 0px;
+    transition: background 0.5s, border 0.5s;
+    font-family: helvetica;
+    font-size: 150%;
+    color: white;
+    text-align: center;
+}
+
+#logo-container:hover
+{
+    border-right: 1px solid white;
+    border-bottom: 1px solid white;
+    background-color: white;
+    color: black;
+}
+
+#logout-nav-bar-button
+{
+    top: 20px;
+}
+
+#error-text
+{
+    font-size: 200%;
+    top: 25px;
+}
+
+#success-text
+{
+    font-size: 200%;
+    top: 23px;
+}
+
+#new-drop-down
+{
+    max-height: 267px;
+}
+
+#information-container
+{
+    height: 100%;
+    width: 100%;
+    position: relative;
+    top: 0px;
+    right: 0px;
+    z-index: 0;
+    overflow-y: scroll;
+}
+
+#information-container::-webkit-scrollbar
+{
+    width: 11px;
+    background: url(Pictures/transparent_background_4.png);
+    border-left: 1px solid #000000;
+}
+
+#information-container::-webkit-scrollbar-thumb
+{
+    background-color: white;
+    border-left: 1px solid #000000;
+}
+
+#content-container
+{
+    height: 100%;
+    width: 100%;
+    position: relative;
+    top: 0px;
+    left: 0px;
+    z-index: 0;
+    border-right: 1px solid black;
+    background: url("Pictures/white_transparent_background_2.png") center center;
+    overflow-y: scroll;
+}
+
+#content-container::-webkit-scrollbar
+{
+    width: 11px;
+    background: url(Pictures/transparent_background_4.png);
+    border-left: 1px solid #000000;
+}
+
+#content-container::-webkit-scrollbar-thumb
+{
+    background-color: white;
+    border-left: 1px solid #000000;
+}
+
+@media only screen and (max-width: 1562px)
+{
+    #content-container-cell
+    {
+        width: 521px;
+    }
+}
+
+@media only screen and (max-width: 1386px)
+{
+    #content-container-cell
+    {
+        width: 265px;
+    }
+}
+
+#content-container::-webkit-scrollbar
+{
+    width: 11px;
+    background: url(Pictures/transparent_background_4.png);
+    border-left: 1px solid #000000;
+}
+
+#content-container::-webkit-scrollbar-thumb
+{
+    background-color: white;
+    border-left: 1px solid #000000;
+}
+
+#information-container-table
+{
+    position: relative;
+    top: 0px;
+    left: 0px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+#path
+{
+    position: absolute;
+    top: 1.5px;
+    text-align: left;
+    width: 100%;
+    height: 90%;
+    border: none;
+    border-radius: 0px 0px 0px 0px;
+    background-color: transparent;
+    padding-left: 13px;
+    padding-right: 13px;
+}
+
+#path:focus
+{
+    height: 90%;
+    background-color: white;
+}
+
+#submit-path
+{
+    position: absolute;
+    top: 2.5px;
+    right: 0px;
+    height: 90%;
+    width: 144px;
+    border: none;
+    border-radius: 0px 0px 0px 0px;
+    background-color: transparent;
+}
+
+#submit-path:focus
+{
+    background-color: white;
+}
+
+#new-group-pop-up-element
+{
+    height: 183px;
+    z-index: 4000;
+}
+
+#user-data-pop-up-element
+{
+    height: 100vh;
+    width: 100vw;
+    border: none;
+    background: transparent;
+}
+
+#top-pop-up-form-container
+{
+    position: relative;
+    top: 0px;
+    left: 0px;
+    width: 100%;
+    background-color: transparent;
+    z-index: 1;
+}
+
+#bottom-pop-up-form-container
+{
+    position: relative;
+    top: 0px;
+    left: 0px;
+    height: 10vh;
+    width: 100vw;
+    background-color: transparent;
+    z-index: 0;
+}
+
+#message-input
+{
+    position: relative;
+    top: 0px;
+    left: 0px;
+    margin: 0 auto;
+    height: 50%;
+    width: 90%;
+    font-family: times new roman;
+    font-size: 150%;
+    color: black;
+    background: url('Pictures/white_transparent_background_3.png') center center;
+    background-size: 100% 100%;
+}
+
+
+#user-data-table
+{
+    height: 100%;
+    width: 100%;
+}
+
+#user-data-submit-button
+{
+    width: 90%;
+}
+
+#user-data-form-container
+{
+    position: relative;
+    margin: 0 auto;
+    height: 100%;
+    width: 100%;
+    top: -17px;
+}
+
+#user-data-pop-up-element
+{
+    overflow-y: scroll;
+}
+
+#user-data-label
+{
+    position: relative;
+    margin: 0 auto;
+    font-size: 100%;
+}
+
+#user-data-select-box
+{
+    position: relative;
+    height: 31px;
+    width: 239px;
+}
+
+#user-data-table-cell
+{
+    padding: 8px;
+}
+
+#user-data-pop-up-exit-button
+{
+    position: fixed;
+}
+
+#reset-password
+{
+    height: 280px;
+}
+
+#nav-back
+{
+    position: relative;
+    height: 90%;
+    width: 144px;
+    border: none;
+    border-radius: 0px 0px 0px 0px;
+    background-color: transparent;
+    font-size: 125%;
+}
+
+#nav-back:focus
+{
+    background-color: white;
+}
+
+#search-bar-layout
+{
+    height: 100%;
+    width: 100vw;
+    border-spacing: 0px;
+    border-bottom: 1px solid black;
+}
+
+#refresh
+{
+    position: relative;
+    height: 90%;
+    width: 144px;
+    border: none;
+    border-radius: 0px 0px 0px 0px;
+    background-color: transparent;
+    font-size: 125%;
+}
+
+#refresh:focus
+{
+    background-color: white;
+}
+
+#path-search-bar
+{
+    height: 100%;
+    width: auto;
+    font-size: 200%;
+}
+
+#user-data-element-container
+{
+    margin: 0 auto;
+    width: 239px;
+}
+
+#search-bar
+{
+    top: 56px;
+    background: url(Pictures/white_transparent_background_2.png);
+    transition: background 0.5s;
+}
+
+#search-bar:hover
+{
+    background: url(Pictures/white_transparent_background_3.png);
+}
+
+#user-content-title
+{
+    position: relative;
+    top: -16px;
+    left: 0px;
+}
+
+#drop-down-label
+{
+    overflow-x: hidden;
+}
+
+#group-message-input
+{
+    height: 100%;
+    width: 100%;
+    resize: vertical;
+}

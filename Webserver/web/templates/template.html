@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			.pagewrap
+			{
+				position: fixed;
+				top: 0px;
+				left: 0px;
+				height: 100vh;
+				width: 100vw;
+				background-size: 100% auto;
+			}
+			
+			#mountains
+			{
+				background: url("/test.jpg") center center;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="pagewrap" id="<%self.template_print("mountains", end = '')%>">
+			<table>
+				<%
+					for i, key in enumerate(parameters):
+						self.template_print("<tr><td>" + str(i) + "</td><td>" + key + "</td><td>" + str(parameters[key]) + "</td></tr>")
+				%>
+			</table>
+		</div>
+	</body>
+</html>
