@@ -1,0 +1,7 @@
+{
+	"server-host":"N-LAPTOP11",
+	"cert-location": "web/certifications/cert.pem",
+	"queue-limit": 100,
+	"socket-buffer-size": 4096,
+	"ddns-api-url": "https://us80BFvPmZirnDIz:dnlXwaO3mPYFr1KS@domains.google.com/nic/update?hostname=nastaciomcabraltafoya.com&myip=<ip>"
+}
