@@ -2,417 +2,132 @@ import os
 import ssl
 import json
 import time
+import atexit
 import socket
 import secrets
+import sqlite3
 import datetime
+import traceback
 import subprocess
+from sqlite3 import Error
+from threading import Semaphore, Thread
+from cryptography.fernet import Fernet
 
-#Class that handles http requests and responses.
-class HTTPHandler:
-    active_sessions = {}
-    
-    # Initializes the HTTPHandler Object.
-    def __init__(self, client_request, request_origin):
-        # Initializes the class working values.
-        self.config            = {}
-        self.origin            = request_origin
-        self.http_request      = client_request
-        self.http_request_data = ""
-        self.execution_stdout  = ""
-        self.request           = {}
-        self.response_headers  = {}
-        self.response_cookies  = []
-        self.response_body     = ""
-        self.response          = None
+def encrypt(data, key):
+    fernet = Fernet(key)
+    return (fernet.encrypt(data.encode()))
 
-        self.import_config()
-        self.parse_request()  # Parses the http request into a dictionary.
-        self.handle_request() # Determines what to do with the request, and what to respond to the client with.
+def decrypt(data, key):
+    fernet = Fernet(key)
+    return (fernet.decrypt(data).decode())
 
-    # Imports settings for the HTTPHandler such as default page, paths, etc.
-    def import_config(self, path = "Server_Config/http_config.json"):
-        with open(path, 'r') as f_in:
-                self.config = json.loads(f_in.read())
-    
-    #Parses the http request into a dictionary.
-    def parse_request(self):
-        print("parse-request")
-        # Parses the first line of the request. The first line contains the request type, path, and protocol version.
-        self.http_request_data = self.http_request.split('\n')
-        data                   = self.http_request_data[0].split(' ')
-        self.request["type"]   = data[0]
+def logger(logfile, logfunc, loguser, logstr):
+    database_config = server_config["log-database"]
+    database_type = database_config["type"].lower()
 
-        # Parses the path, and the parameters sent in the path.
+    if database_type == "sqlite":
+        log_connection = None
+        log_c = None
+
         try:
-            get_data                        = data[1].split('?')
-            self.request["path"]            = get_data[0]
-            self.request["path-parameters"] = get_data[1]
+            log_connection = sqlite3.connect(
+                database_config["sqlite-file"],
+                timeout=30
+            )
+            log_c = log_connection.cursor()
 
-        except:
-            try:
-                self.request["path"]            = data[1].split('?')[0]
-                self.request["path-parameters"] = ""
-            except:
-                self.request["path"]            = "/"
-                self.request["path-parameters"] = ""
+            # Allow concurrent readers and make concurrent writers wait rather
+            # than immediately failing with "database is locked".
+            log_c.execute("PRAGMA journal_mode=WAL")
+            log_c.execute("PRAGMA busy_timeout=30000")
 
-        # Sets the protocol.
-        self.request["protocol"] = data[2]
+            with open("Server_Config/log.sql", "r") as sql:
+                log_c.executescript(sql.read())
 
-        # Parses the http header values.
-        for item in self.http_request_data[1:-1]:
-            try:
-                try:
-                    (key, data)       = item.split(':')
+            log_c.execute(
+                "INSERT INTO log (logdate, logfile, logfunc, loguser, logstr) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    time.strftime("%m/%d/%Y %H:%M:%S %Z"),
+                    logfile,
+                    logfunc,
+                    loguser,
+                    logstr
+                )
+            )
 
-                    if (data[0] == ' '):
-                        data = data[1:]
+            log_connection.commit()
 
-                    if (key == "Cookie"):
-                        self.request[key] = {}
+        finally:
+            if log_c is not None:
+                log_c.close()
+            if log_connection is not None:
+                log_connection.close()
 
-                        for cookie in data.split(';'):
-                            (cookie_name, cookie_value)    = cookie.split('=')
-                            self.request[key][cookie_name] = cookie_value.replace('\r', '')
+    elif database_type == "mysql":
+        import mysql.connector
 
-                    else:
-                        self.request[key] = data.replace("; ", ';')
-                except:
-                    self.request[item.split(':')[0]] = ""
-            except:
-                print("Cannot Parse -> " + item)
-                
-        # Parses the request data.
-        self.request["parameters"] = self.http_request_data[len(self.http_request_data) - 1]
+        mysql_config = database_config["mysql"]
 
-    # Generates header that instructs the client to redirect to the location specified.
-    def redirect(self, path):
-        self.set_response_header("Location", path) # Setting redirect location.
-        self.set_response(body = "", status = "301 Moved Permanently") # Setting http status.
+        log_connection = mysql.connector.connect(
+            host=mysql_config["host"],
+            port=mysql_config["port"],
+            database=mysql_config["database"],
+            user=mysql_config["user"],
+            password=mysql_config["password"]
+        )
 
-    # Executes an action that corresponds to the error code specified.
-    def set_error(self, code, parameters, method):
-        self.execute_action(self.config["status-locations"][code], parameters, method, status = (code + " " + self.config["status-codes"][code])) # Executes an action that corresponds to the error code specified.
-    
-    # Adds information to the response.
-    def set_response(self, body = None, status = "200 OK"):
-        print("set-response")
+        log_c = log_connection.cursor()
 
-        if (self.response == None): # The following only executes if the body argument was not set.
-            self.response = (self.config["version"] + ' ' + status + '\n').encode()
+        log_c.execute(
+            "CREATE TABLE IF NOT EXISTS log ("
+            "logdate VARCHAR(64), "
+            "logfile TEXT, "
+            "logfunc TEXT, "
+            "loguser TEXT, "
+            "logstr LONGTEXT"
+            ")"
+        )
 
-            if (len(self.response_cookies) > 0): # Instructs the client to allow cookie headers.
-                self.response += "Access-Control-Expose-Headers: *\n".encode()
-            
-            for i, key in enumerate(self.response_headers): # Sets non cookie headers.
-                if (i > 0):
-                    self.response += '\n'.encode()
-                self.response += (key + ": " + self.response_headers[key]).encode()
+        log_c.execute(
+            "INSERT INTO log "
+            "(logdate, logfile, logfunc, loguser, logstr) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (
+                time.strftime("%m/%d/%Y %H:%M:%S %Z"),
+                logfile,
+                logfunc,
+                loguser,
+                logstr
+            )
+        )
 
-            if (len(self.response_cookies) > 0): # Sets cookie headers.
-                for i, cookie in enumerate(self.response_cookies):
-                    if (i > 0):
-                        self.response += ' '.encode()
-                    self.response += ("\nSet-Cookie: " + cookie).encode()
+        log_connection.commit()
+        log_c.close()
+        log_connection.close()
 
-            self.response += "\r\n\r\n".encode()
-            
-            if not(body == None):
-                try:
-                    self.response += body.encode()
-                except:
-                    self.response += body
-            else:
-                self.response += (self.response_body.encode() + '\r'.encode())
+    else:
+        raise ValueError(
+            "Unsupported log database type: " + database_config["type"]
+        )
+#END #logger()
 
-    def set_response_header(self, key, value):
-        self.response_headers[key] = value
-    
-    def set_session(self):
-        ret_val = None
-        
-        try:
-            if (self.request["Cookie"]["sessionId"] in HTTPHandler.active_sessions):
-                if (self.validate_session(self.request["Cookie"]["sessionId"])):
-                    HTTPHandler.active_sessions[self.request["Cookie"]["sessionId"]]["set-date"] = datetime.datetime.now()
-                    
-                    ret_val = self.request["Cookie"]["sessionId"]
-                else:
-                    print(str(HTTPHandler.active_sessions[self.request["Cookie"]["sessionId"]]))
-                    raise Exception("Session Expired or Invalid")
-            else:
-                raise Exception("No Session Exists")
-        except:
-            set_date   = datetime.datetime.now()
-            session_id = secrets.token_urlsafe(16)
 
-            while (session_id in HTTPHandler.active_sessions):
-                session_id = secrets.token_urlsafe(64)
-
-            HTTPHandler.active_sessions[session_id] = {"set-date":set_date, "timeout":self.config["session-timeout"], "parameters":{"authenticated":False}}
-            ret_val                                 = session_id
-            self.set_cookie("sessionId", session_id)
-
-        return (ret_val)
-
-    def validate_session(self, session_id):
-        ret_val      = False
-        session      = HTTPHandler.active_sessions[session_id]
-        timeout      = timeout_to_seconds(session["timeout"])
-        timediff     = (datetime.datetime.now() - session["set-date"])
-        session_age  = ((timediff.days * 24 * 60 * 60) + timediff.seconds)
-
-        if (session_age < timeout):
-            ret_val = True
-        else:
-            session["parameters"]["authenticated"] = ret_val
-        
-        return (ret_val)
-
-    def authenticate_session(self, session_id, username):
-        try:
-            HTTPHandler.active_sessions[session_id]["parameters"]["authenticated"] = True
-            HTTPHandler.active_sessions[session_id]["parameters"]["username"]      = username
-        except:
-            pass
-
-    def deauthenticate_session(self, session_id):
-        try:
-            HTTPHandler.active_sessions[session_id]["parameters"]["authenticated"] = False
-        except:
-            pass
-
-    def session_authenticated(self, session_id):
-        try:
-            return (HTTPHandler.active_sessions[session_id]["parameters"]["authenticated"])
-        except:
-            return (None)
-
-    def destroy_session(self, session_id):
-        try:
-            del HTTPHandler.active_sessions[session_id]
-        except:
-            pass
-
-    def get_session_parameter(self, session_id, key):
-        try:
-            return (HTTPHandler.active_sessions[session_id]["parameters"][key])
-        except:
-            return (None)
-
-    def set_session_parameter(self, session_id, key, value):
-        try:
-            HTTPHandler.active_sessions[session_id]["parameters"][key] = value
-        except:
-            print("An error occurred when setting the Session parameter.")
-            pass
-    
-    def test(self, session):
-        return str(True)
-
-    def set_cookie(self, key, value):
-        self.response_cookies.append(key + '=' + value)
-
-    def print(self, text, end = '\n'):
-        self.response_body += (text + end)
-
-    def get_exec_stdout(self):
-        return (self.execution_stdout)
-    
-    def template_print(self, string, end = '\n'):
-        self.execution_stdout += (string + end)
-
-    def reset_exec_stdout(self):
-        self.execution_stdout = ""
-
-    def execute_template(self, path, parameters):
-        print("execute-template")
-        template   = ""
-        holder     = ""
-        scripts    = []
-        found_code = False
-        i          = 0
-        result     = ""
-        
-        with open((self.config["root-path"] + self.config["paths"]["templates"] + path), 'r') as f_in:
-            template = f_in.read()
-
-        while (i < len(template)):
-            if (template[i] == '<'):
-                if not(i == (len(template) - 2)):
-                    if (template[i + 1] == '%'):
-                        j = (i + 2)
-
-                        while (j < (len(template) - 1)):
-                            if (template[j] == '%'):
-                                if not(j == (len(template) - 1)):
-                                    if (template[j + 1] == '>'):
-                                        result += ("%>" + str(len(scripts)) + "<%")
-
-                                        scripts.append(holder)
-
-                                        holder  = ""
-                                        i       = (j + 1)
-                                        break
-                                    else:
-                                        holder += template[j]
-                                else:
-                                    holder += template[j]
-                            else:
-                                holder += template[j]
-                            j += 1
-                    else:
-                        result += template[i]
-                else:
-                    result += template[i]
-            else:
-                result += template[i]
-            i += 1
-
-        for s, script in enumerate(scripts):
-            lines      = script.split('\n')
-            code_lines = []
-
-            for line in lines:
-                if not(is_blank(line)):
-                    code_lines.append(line.replace('\t', '    '))
-                    
-            indent = 0
-
-            while ((code_lines[0][indent] == '\t') or (code_lines[0][indent] == ' ')):
-                indent += 1
-
-            corrected = ""
-            
-            for line in code_lines:
-                corrected += (line[indent:].replace('\t', "    ") + '\n')
-            
-            exec(corrected)
-
-            result = result.replace(("%>" + str(s) + "<%"), self.get_exec_stdout())
-            self.reset_exec_stdout()
-        
-        self.set_response_header("Content-Type", "text/html")
-        self.set_response_header("Content-Length", str(len(result)))
-        self.print(result)
-    
-    # Determines what to do with a request.
-    def handle_request(self):
-        print("handle-request")
-        if (self.request["type"] == "GET"):
-            self.do_get(self.request["path"], self.request["path-parameters"])
-        elif (self.request["type"] == "POST"):
-            self.do_post(self.request["path"], self.request["parameters"])
-        elif (self.request["type"] == "PUT"):
-            self.do_put(self.request["path"], self.request["parameters"])
-        elif (self.request["type"] == "DELETE"):
-            self.do_delete(self.request["path"], self.request["parameters"])
-
-    # Does a get method. It is in a separate function so that additional stuff can be added if required before an action is executed.
-    def do_get(self, path, args):
-        #print("do-get")
-        if (path == "/"):
-            self.execute_action(self.config["default-location"], args, method = "get")
-        else:
-            self.execute_action(path, args, method = "get")
-
-    # Does a post method. It is in a separate function so that additional stuff can be added if required before an action is executed.
-    def do_post(self, path, args):
-        print("do-post")
-        self.execute_action(path, args, method = "post")
-
-    # Does a put method. It is in a separate function so that additional stuff can be added if required before an action is executed.
-    def do_put(self, path, args):
-        print("do-put")
-        self.execute_action(path, args, method = "put")
-
-    # Does a delete method. It is in a separate function so that additional stuff can be added if required before an action is executed.
-    def do_delete(self, path, args):
-        print("do-delete")
-        self.execute_action(path, args, method = "delete")
-
-    # Executes an action. The default method if one is not specified is get.
-    def execute_action(self, action, args, method = "get", status = "200 OK"):
-        print("execute-action")
-        # Parses the parameters from the http request that need to be passed as args to the `action`.
-        parameters    = {}
-        action_script = ""
-        
-        for arg in args.split('&'):
-            # Replaces the url escape codes with the characters that they escape.
-            try:
-                (key, value)    = arg.split('=')
-                parameters[key] = value.replace('+', ' ').replace("%20", ' ').replace("$20", ' ').replace("%3C", '<').replace("$3C", '<').replace("%3E", '>').replace("$3E", '>').replace("%23", '#').replace("$23", '#').replace("%25", '%').replace("$25", '%').replace("%2B", '+').replace("$2B", '+').replace("%7B", '{').replace("$7B", '{').replace("%7D", '}').replace("$7D", '}').replace("%7C", '|').replace("$7C", '|').replace("%5C", '\\').replace("$5C", '\\').replace("%5E", '^').replace("$5E", '^').replace("%7E", '~').replace("$7E", '~').replace("%5B", '[').replace("$5B", '[').replace("%5D", ']').replace("$5D", ']').replace("%60", '\'').replace("$60", '\'').replace("%3B", ';').replace("$3B", ';').replace("%2F", '/').replace("$2F", '/').replace("%3F", '?').replace("$3F", '?').replace("%3A", ':').replace("$3A", ':').replace("%40", '@').replace("$40", '@').replace("%3D", '=').replace("$3D", '=').replace("%26", '&').replace("$26", '&').replace("%24", '$').replace("$24", '$')
-            except:
-                parameters[arg.split('=')[0]] = None
-        
-        # Attempts to execute the action as a python script.
-        try:
-            print("Action: " + absolute_path + (self.config["root-path"] + self.config["paths"]["actions"]["actions-root"] + self.config["paths"]["actions"][method] + action + ".py"))
-            with open((self.config["root-path"] + self.config["paths"]["actions"]["actions-root"] + self.config["paths"]["actions"][method] + action + ".py"), 'r') as f_in:
-                action_script = f_in.read()
-
-            # Setting http headers.
-            self.set_response_header("Content-Type", "text/html;charset=utf-8")
-            exec(action_script)
-            self.set_response_header("Content-Length", str(len(self.response_body.encode())))
-            
-            self.set_response(status = status)
-        except FileNotFoundError as fnfe:
-            self.get_file_bytes(action, method)
-        except Exception as general_exception:
-            print(general_exception)
-            self.set_error("500", ("path=" + action.replace('/', "%2F")), method)
-
-    # Gets the bytes of a file that matches the path from the url and puts them in the response.
-    def get_file_bytes(self, path, method = "get", status = "200 OK"):
-        print("get-file-bytes")
-        try:
-            # Reading file bytes.
-            f_in = open((self.config["root-path"] + self.config["paths"]["public-files"] + path), "rb")
-            file_bytes = f_in.read()
-
-            # Setting http headers.
-            self.set_response_header("Content-Type", (self.config["content-types"][path.split('.')[-1:][0]] + ";charset=utf-8"))
-            self.set_response_header("Content-Length", str(len(file_bytes)))
-
-            # Setting http response.
-            self.set_response(body = file_bytes, status = status)
-            f_in.close()
-        except Exception as e:
-            print(e)
-            # If the bytes cannot be read, a 404 error is returned because the path does not exist.
-            self.set_error("404", ("path=" + path.replace('/', "%2F")), method)
-    
-    # Static method that can be accessed without instantiating the class as an object.
-    # The class does not need to be instantiated as an object to be used external to the class.
-    # The object for the class only exists within the instance of the static method.
-    def process_request(client_request, request_origin):
-        print("process-request")
-        print(str(HTTPHandler.active_sessions))
-        print(client_request)
-        handler = HTTPHandler(client_request, request_origin)
-        return(handler.response)
-#END HTTPHandler Class
-
-absolute_path = ""
-
-for location in os.path.realpath(__file__).split('\\')[:-1]:
-    absolute_path += (location + '/')
-
-os.chdir(absolute_path)
-print(os.getcwd())
-
-server_config = None
-
-with open("Server_Config/server_config.json", 'r') as f_in:
-    server_config = json.loads(f_in.read())
+def _logger_(logfile, logfunc, loguser, logstr):
+    try:
+        with open("log.txt", 'a') as log_file:
+            log_file.write(time.strftime("%m/%d/%Y %H:%M:%S %Z") + " -> " + logfile + ", " + logfunc + ", " + loguser + ", " + logstr + "\n\n")
+    except:
+        with open("log.txt", 'w') as log_file:
+            log_file.write(time.strftime("%m/%d/%Y %H:%M:%S %Z") + " -> " + logfile + ", " + logfunc + ", " + loguser + ", " + logstr + "\n\n")
+#END _logger_()
 
 def is_blank(string):
     for ch in string:
         if ((ord(ch) >= 32) and (ord(ch) <= 126)):
             return (False)
     return (True)
+#END is_blank()
 
 def timeout_to_seconds(hms_notation):
     (hours, minutes, seconds) = hms_notation.split(':')
@@ -422,46 +137,330 @@ def timeout_to_seconds(hms_notation):
     seconds = int(seconds)
     
     return ((hours * 3600) + (minutes * 60) + seconds)
+#END timeout_to_seconds()
 
-SERVER_HOST = server_config["server-host"]
-tcp_socket  = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
 
-if not(server_config["cert-location"] == None):
-    SERVER_PORT = 443
-    context     = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+def _recv_http_request(client_connection, buffer_size):
+    """Receive one complete HTTP/1.x request from a TCP connection.
 
-    context.load_cert_chain("web/certifications/cert.pem")
+    Reads the header section first, then determines the request-body framing
+    from Content-Length or Transfer-Encoding. Returns the complete request
+    as bytes. This server intentionally handles one request per connection.
+    """
+    data = bytearray()
 
-    tcp_socket.bind((SERVER_HOST, SERVER_PORT))
-    tcp_socket.listen(server_config["queue-limit"])
+    # Read until the HTTP header section is complete.
+    while b"\r\n\r\n" not in data:
+        chunk = client_connection.recv(buffer_size)
+        if not chunk:
+            break
+        data.extend(chunk)
 
-    ssl_tcp_socket = context.wrap_socket(tcp_socket, server_side=True)
+        # Avoid accepting an unbounded header section.
+        if len(data) > 1024 * 1024:
+            raise ValueError("HTTP request headers too large")
+
+    header_end = data.find(b"\r\n\r\n")
+    if header_end == -1:
+        raise ValueError("Incomplete HTTP request headers")
+
+    header_end += 4
+    header_bytes = bytes(data[:header_end])
+
+    # Parse the request headers without decoding the body.
+    header_lines = header_bytes[:-4].decode("iso-8859-1").split("\r\n")
+    if not header_lines or not header_lines[0]:
+        raise ValueError("Invalid HTTP request line")
+
+    content_length = None
+    transfer_encoding = None
+
+    for line in header_lines[1:]:
+        if ":" not in line:
+            raise ValueError("Invalid HTTP header")
+
+        name, value = line.split(":", 1)
+        name = name.strip().lower()
+        value = value.strip()
+
+        if name == "content-length":
+            try:
+                length = int(value, 10)
+            except ValueError:
+                raise ValueError("Invalid Content-Length")
+
+            if length < 0:
+                raise ValueError("Invalid Content-Length")
+
+            if content_length is not None and content_length != length:
+                raise ValueError("Conflicting Content-Length headers")
+
+            content_length = length
+
+        elif name == "transfer-encoding":
+            if transfer_encoding is None:
+                transfer_encoding = value.lower()
+            else:
+                transfer_encoding += ", " + value.lower()
+
+    if content_length is not None and transfer_encoding is not None:
+        raise ValueError("Both Transfer-Encoding and Content-Length present")
+
+    # No request body framing means the request ends at the header section.
+    if transfer_encoding is None and content_length is None:
+        return bytes(data)
+
+    # Content-Length framing.
+    if transfer_encoding is None:
+        body_needed = content_length
+        while len(data) - header_end < body_needed:
+            chunk = client_connection.recv(buffer_size)
+            if not chunk:
+                raise ValueError("Incomplete HTTP request body")
+            data.extend(chunk)
+
+        return bytes(data[:header_end + body_needed])
+
+    # HTTP/1.1 chunked request body.
+    encodings = [item.strip().lower() for item in transfer_encoding.split(",")]
+    if not encodings or encodings[-1] != "chunked":
+        raise ValueError("Unsupported Transfer-Encoding")
+
+    body_start = header_end
+    cursor = body_start
+
+    # Decode chunks into a normal body, preserving the original headers.
+    decoded_body = bytearray()
 
     while True:
-        try:
-            (client_connection, client_address) = ssl_tcp_socket.accept()
-            client_request                      = client_connection.recv(server_config["socket-buffer-size"]).decode()
-            server_response                     = HTTPHandler.process_request(client_request, client_address)
+        # Get a complete chunk-size line.
+        while True:
+            line_end = data.find(b"\r\n", cursor)
+            if line_end != -1:
+                break
+            chunk = client_connection.recv(buffer_size)
+            if not chunk:
+                raise ValueError("Incomplete chunked request")
+            data.extend(chunk)
 
-            client_connection.sendall(server_response)
+        size_line = bytes(data[cursor:line_end])
+        cursor = line_end + 2
+
+        # Ignore chunk extensions after ';'.
+        size_text = size_line.split(b";", 1)[0].strip()
+        try:
+            chunk_size = int(size_text, 16)
+        except ValueError:
+            raise ValueError("Invalid chunk size")
+
+        if chunk_size == 0:
+            # Consume the final CRLF after the zero-size chunk and any trailers.
+            while True:
+                trailer_end = data.find(b"\r\n\r\n", cursor)
+                if trailer_end != -1:
+                    cursor = trailer_end + 4
+                    break
+
+                # The empty trailer section is simply CRLF.
+                if data[cursor:cursor + 2] == b"\r\n":
+                    cursor += 2
+                    break
+
+                chunk = client_connection.recv(buffer_size)
+                if not chunk:
+                    raise ValueError("Incomplete chunked trailers")
+                data.extend(chunk)
+            break
+
+        required = cursor + chunk_size + 2
+        while len(data) < required:
+            chunk = client_connection.recv(buffer_size)
+            if not chunk:
+                raise ValueError("Incomplete chunk data")
+            data.extend(chunk)
+
+        decoded_body.extend(data[cursor:cursor + chunk_size])
+
+        if data[cursor + chunk_size:cursor + chunk_size + 2] != b"\r\n":
+            raise ValueError("Invalid chunk delimiter")
+
+        cursor += chunk_size + 2
+
+    # Reconstruct a request suitable for HTTPHandler.parse_request(), with
+    # Transfer-Encoding removed and Content-Length set to the decoded body.
+    request_head = bytearray(header_bytes[:-4])
+    request_head_lines = request_head.decode("iso-8859-1").split("\r\n")
+
+    rebuilt_headers = []
+    for line in request_head_lines:
+        if line.lower().startswith("transfer-encoding:"):
+            continue
+        if line.lower().startswith("content-length:"):
+            continue
+        rebuilt_headers.append(line)
+
+    rebuilt_headers.append("Content-Length: " + str(len(decoded_body)))
+
+    return (
+        "\r\n".join(rebuilt_headers).encode("iso-8859-1")
+        + b"\r\n\r\n"
+        + bytes(decoded_body)
+    )
+
+def _handle_client(client_connection, client_address, redirect_to_ssl, true_path, thread_slots):
+    try:
+        client_request = _recv_http_request(
+            client_connection,
+            server_config["socket-buffer-size"]
+        )
+
+        # HTTPHandler contains mutable request/response state, so each worker
+        # must have its own handler instance.
+        request_handler = HTTPHandler()
+
+        server_response = request_handler.respond_to_request(
+            client_request,
+            client_address,
+            redirect_to_ssl,
+            true_path
+        )
+
+        _logger_("MAIN", "listener", "SERVER RESPONSE", str(server_response))
+
+        client_connection.sendall(server_response)
+
+    except:
+        logger(
+            "MAIN",
+            "listener",
+            "SERVER",
+            "EXCEPTION: " +
+            traceback.format_exc()
+                .replace('"', '&#34;')
+                .replace('<', "&#60;")
+                .replace('>', "&#62;")
+                .replace('\n', "<br>")
+                .replace(' ', "&#160;")
+        )
+
+    finally:
+        try:
             client_connection.close()
         except:
             pass
 
-    ssl_tcp_socket.close()
-    tcp_socket.close()
-else:
-    SERVER_PORT = 80
+        thread_slots.release()
+#END _handle_client()
 
-    tcp_socket.bind((SERVER_HOST, SERVER_PORT))
-    tcp_socket.listen(server_config["queue-limit"])
+def listener(_socket_, redirect_to_ssl = False, true_path = False):
+    logger("MAIN", "listener", "SERVER", "")
+
+    thread_slots = Semaphore(server_config["max-threads"])
 
     while True:
-        (client_connection, client_address) = tcp_socket.accept()
-        client_request                      = client_connection.recv(server_config["socket-buffer-size"]).decode()
-        server_response                     = HTTPHandler.process_request(client_request, client_address)
+        thread_slots.acquire()
+        client_connection = None
 
-        client_connection.sendall(server_response)
-        client_connection.close()
+        try:
+            (client_connection, client_address) = _socket_.accept()
+            client_connection.settimeout(10)
 
+            Thread(
+                target=_handle_client,
+                args=(
+                    client_connection,
+                    client_address,
+                    redirect_to_ssl,
+                    true_path,
+                    thread_slots
+                ),
+                daemon=True
+            ).start()
+
+        except:
+            if client_connection is not None:
+                try:
+                    client_connection.close()
+                except:
+                    pass
+
+            thread_slots.release()
+
+            logger(
+                "MAIN",
+                "listener",
+                "SERVER",
+                "EXCEPTION: " +
+                traceback.format_exc()
+                    .replace('"', '&#34;')
+                    .replace('<', "&#60;")
+                    .replace('>', "&#62;")
+                    .replace('\n', "<br>")
+                    .replace(' ', "&#160;")
+            )
+            pass
+#END listener()
+
+
+        
+def non_ssl_server(redirect_to_ssl = False, true_path = False):
+    logger("MAIN", "non_ssl_server", "SERVER", "")
+    
+    try:
+        SERVER_HOST = server_config["server-host"]
+        tcp_socket  = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        SERVER_PORT = server_config["non-ssl-port"]
+
+        tcp_socket.bind((SERVER_HOST, SERVER_PORT))
+        tcp_socket.listen(server_config["queue-limit"])
+        listener(tcp_socket, redirect_to_ssl, true_path)
+    except:
+        logger("MAIN", "non_ssl_server", "SERVER", "EXCEPTION: " + traceback.format_exc().replace('"', '&#34;').replace('<', "&#60;").replace('>', "&#62;").replace('\n', "<br>").replace(' ', "&#160;"))
+        pass
+    
     tcp_socket.close()
+#END non_ssl_server()
+
+absolute_path = ""
+
+for location in os.path.realpath(__file__).split('\\')[:-1]:
+    absolute_path += (location + '/')
+
+try:
+    os.chdir(absolute_path)
+except:
+    for location in os.path.realpath(__file__).split('/')[:-1]:
+        absolute_path += (location + '/')
+
+        os.chdir(absolute_path)
+    
+    logger("MAIN", "INITIALIZATION OF ROOT PATH", "SERVER", "Exception 19 occurred. SERVER Likely Running in Linux Based OS.")
+
+server_config = None
+
+with open("Server_Config/server_config.json", 'r') as f_in:
+    server_config = json.loads(f_in.read())
+
+with open(server_config["pepperkey"], "rb") as pepper_key:
+    server_config["pepperkey"] = pepper_key.read()
+
+with open(server_config["saltskey"], "rb") as salts_key:
+    server_config["saltskey"] = salts_key.read()
+
+with open(server_config["userskey"], "rb") as users_key:
+    server_config["userskey"] = users_key.read()
+
+with open(server_config["pepper"], "rb") as pepper_file:
+    server_config["pepper"] = decrypt(pepper_file.read(), server_config["pepperkey"])
+    
+with open((absolute_path + "my_http_handler.py"), 'r') as f_in:
+    exec(f_in.read())
+
+with open((absolute_path + "my_http_handler.py"), 'r') as f_in:
+    exec(f_in.read())
+
+logger("MAIN", "SERVER INITIALIZATION", "SERVER", "STAGE: Initializing HTTP Handler.")
+initialized_handler = HTTPHandler()
+
+logger("MAIN", "SERVER INITIALIZATION", "SERVER", "STAGE: Starting Server Main Process.")
+non_ssl_server(server_config["enable-https"]["force-ssl"]["force"],server_config["enable-https"]["force-ssl"]["true-path"])

@@ -8,7 +8,7 @@ def discoverGPEN(ip, username, password):
             data_item            = item.split(':')
             retVal[data_item[0]] = data_item[1]
 
-        return ("{\"MAC Address\": \"" + retVal["i03"].replace("'", '') + "\", \"IP Address\": \"" + ip + "\", \"Serial Number\": \"" + retVal["i04"].replace("'", '') + "\", \"Identity\": \"" + retVal["i05"].replace("'", '') + "\", \"Board Name\": \"" + retVal["i07"].replace("'", '') + "\"}")
+        return ("{\"Board Name\": \"" + retVal["i07"].replace("'", '') + "\", \"MAC Address\": \"" + retVal["i03"].replace("'", '') + "\", \"IP Address\": \"" + ip + "\", \"Serial Number\": \"" + retVal["i04"].replace("'", '') + "\", \"Identity\": \"" + retVal["i05"].replace("'", '') + "\"}")
     except:
         return ("null")
 
@@ -19,6 +19,8 @@ try:
         data = json.loads(parameters["data"])
         self.print("{\"stat\": 4, \"msg\": \"\", \"gpenresponse\": " + discoverGPEN(data["ip"], data["username"], data["password"]) + "}")
     else:
+        logger("MAIN", "post/discover.py", "Unauthorized Attempted Access")
         raise("Unauthorized Attempted Access")
 except:
+    logger("MAIN", "post/discover.py", "Unauthorized Attempted Access")
     raise("Unauthorized Attempted Access")

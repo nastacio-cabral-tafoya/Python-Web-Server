@@ -1,6 +1,88 @@
-function submit_data(path)
+function set_textbox_error_levels(textbox)
+{
+    if (!isblank(textbox.value))
+	{
+	    if (textbox.id === "dob-textbox")
+	    {
+	        if (/[0-9]{2}\/[0-9]{2}\/[0-9]{4}/.test(textbox.value))
+		    {
+		        set_textbox_errorlevel(textbox, 0);
+		        return (false);
+		    }
+		    else
+		    {
+		        set_textbox_errorlevel(textbox, 2);
+		        return (true);
+		    }
+	    }
+	    else if (textbox.id === "confirmpassword-textbox")
+	    {
+	        if (textbox.value === document.getElementById("password-textbox").value)
+	        {
+	            set_textbox_errorlevel(document.getElementById("password-textbox"), 0);
+		        set_textbox_errorlevel(textbox, 0);
+		        return (false);
+	        }
+	        else
+	        {
+	            set_textbox_errorlevel(document.getElementById("password-textbox"), 2);
+	            set_textbox_errorlevel(textbox, 2);
+		        return (true);
+	        }
+	    }
+	    else
+	    {
+	        set_textbox_errorlevel(textbox, 0);
+		    return (false);
+	    }
+	}
+	else
+	{
+		set_textbox_errorlevel(textbox, 2);
+		return (true);
+	}
+}
+
+function set_selectbox_error_levels(selectbox)
+{
+    if (!isblank(selectbox.value))
+	{
+		set_selectbox_errorlevel(selectbox, 0);
+		return (false);
+	}
+	else
+	{
+		set_selectbox_errorlevel(selectbox, 2);
+		return (true);
+	}
+}
+
+//==========================================================//
+var textboxes = document.getElementsByClassName("textbox"); //
+                                                            //
+for (let i = 0; i < textboxes.length; i++)                  //
+{                                                           //
+	textboxes[i].addEventListener("focusout", function(){   //
+		set_textbox_error_levels(textboxes[i]);              //
+	}, false);                                              //
+}                                                           //
+//==========================================================//
+
+//==========================================================//
+var selectboxes = document.getElementsByClassName("selectbox"); //
+                                                            //
+for (let i = 0; i < textboxes.length; i++)                  //
+{                                                           //
+	selectboxes[i].addEventListener("focusout", function(){   //
+		set_selectbox_error_levels(selectboxes[i]);              //
+	}, false);                                              //
+}                                                           //
+//==========================================================//
+
+function submit_data(method, path)
 {
 	let textboxes       = document.getElementsByClassName("textbox");
+	let selectboxes     = document.getElementsByClassName("selectbox");
 	let data            = {};
 	let errors          = false;
 	
@@ -11,27 +93,45 @@ function submit_data(path)
 		console.log(window.getComputedStyle(textboxes[i]).visibility);
 		if (window.getComputedStyle(textboxes[i]).visibility !== "hidden")
 		{
-			if (!isblank(textboxes[i].value))
+			data[textboxes[i].name] = [textboxes[i].value, textboxes[i].id]
+			
+			if (set_textbox_error_levels(textboxes[i]))
 			{
-				data[textboxes[i].name] = [textboxes[i].value, textboxes[i].id];
-				
-				set_textbox_errorlevel(textboxes[i], 0);
+			    errors = true;
 			}
-			else
+		}
+	}
+	
+	for (let i = 0; i < selectboxes.length; i++)
+	{
+		console.log(window.getComputedStyle(selectboxes[i]).visibility);
+		if (window.getComputedStyle(selectboxes[i]).visibility !== "hidden")
+		{
+		    data[selectboxes[i].name] = [selectboxes[i].value, selectboxes[i].id]
+			
+			if (set_selectbox_error_levels(selectboxes[i]))
 			{
-				set_textbox_errorlevel(textboxes[i], 2);
-				errors = true;
+			    errors = true;
 			}
 		}
 	}
 	
 	if (errors)
 	{
-		alert("One or more of the required fields were filled out incorrectly.\n\nPlease check your entries and try again.");
+		page_alert(("One or more of the required fields were filled out incorrectly.\n\nPlease check your entries and try again."), "Okay", function(){
+			confirm_alert();
+		})
 		return;
 	}
 	
-	post(path, data, true);
+	if (method === "post")
+	{
+        post(path, data, true);
+	}
+	else if (method === "put")
+	{
+	    put(path, data, true);
+	}
 }
 
 function post(path, data, showLoader)
@@ -47,6 +147,7 @@ function post(path, data, showLoader)
 	{
 		if (xhr.readyState === 4)
 		{
+		    console.log(xhr.response)
 			let response = JSON.parse(xhr.response);
 			
 			switch(response.stat)
@@ -55,25 +156,70 @@ function post(path, data, showLoader)
 					location.reload();
 					break;
 				case 1:
-					alert("Error: " + response.msg)
 					hide_loader();
+					
+					page_alert(("Error: " + response.msg), "Okay", function(){
+						confirm_alert()
+					})
 					break;
 				case 2:
+					hide_loader();
+					
 					for (let i = 0; i < response.incorrect_fields.length; i++)
 					{
 						set_textbox_errorlevel(document.getElementById(response.incorrect_fields[i]), response.stat);
 					}
 					
-					alert(response.msg);
-					hide_loader();
+					page_alert(response.msg, "Okay", function(){
+						confirm_alert()
+					});
 					break;
 				case 4:
+					hide_loader();
+					
 					if (response.gpenresponse != null)
 					{
 						output_data(response.gpenresponse);
 					}
-					hide_loader();
 					break;
+				case 5:
+					hide_loader();
+					
+					page_alert(response.msg, "Okay", function(){
+						confirm_alert();
+						location.reload();
+					});
+					break;
+				case 6:
+					hide_loader();
+					
+					page_alert(response.msg, "Okay", function(){
+						confirm_alert();
+						window.location.href = "/login";
+					});
+					break;
+				case 7:
+					hide_loader();
+					
+					if (response.newaccresponse != null)
+					{
+						show_errors(response.newaccresponse);
+					}
+					
+					page_alert(("Error: " + response.msg), "Okay", function(){
+						confirm_alert()
+					})
+					break;
+				case 8:
+					hide_loader();
+				    
+				    outPutLog(response.log);
+				    break;
+				case 9:
+					hide_loader();
+					
+					outPutLogEntry(response.logentry);
+				    break;
 			}
 		}
 		
@@ -85,6 +231,108 @@ function post(path, data, showLoader)
 	xhr.send("data=" + JSON.stringify(data));
 }
 
+function put(path, data, showLoader)
+{
+	if (showLoader)
+	{
+		show_loader();
+	}
+	
+	var xhr = new XMLHttpRequest();
+	
+	xhr.onreadystatechange = function()
+	{
+		if (xhr.readyState === 4)
+		{
+		    console.log(xhr.response)
+			let response = JSON.parse(xhr.response);
+			
+			handle_response(response);
+		}
+		
+		waiting = false;
+	};
+	
+	xhr.open("PUT", path, true);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.send("data=" + JSON.stringify(data));
+}
+
+function handle_response(response)
+{
+    switch(response.stat)
+	{
+    	case 0:
+    		location.reload();
+    		break;
+    	case 1:
+    		hide_loader();
+    		
+    		page_alert(("Error: " + response.msg), "Okay", function(){
+    			confirm_alert()
+    		})
+    		break;
+    	case 2:
+    		hide_loader();
+    		
+    		for (let i = 0; i < response.incorrect_fields.length; i++)
+    		{
+    			set_textbox_errorlevel(document.getElementById(response.incorrect_fields[i]), response.stat);
+    		}
+    		
+    		page_alert(response.msg, "Okay", function(){
+    			confirm_alert()
+    		});
+    		break;
+    	case 4:
+    		hide_loader();
+    		
+    		if (response.gpenresponse != null)
+    		{
+    			output_data(response.gpenresponse);
+    		}
+    		break;
+    	case 5:
+    		hide_loader();
+    		
+    		page_alert(response.msg, "Okay", function(){
+    			confirm_alert();
+    			location.reload();
+    		});
+    		break;
+    	case 6:
+    		hide_loader();
+    		
+    		page_alert(response.msg, "Okay", function(){
+    			confirm_alert();
+    			window.location.href = "/login";
+    		});
+    		break;
+    	case 7:
+    		hide_loader();
+    		
+    		if (response.newaccresponse != null)
+    		{
+    			show_errors(response.newaccresponse);
+    		}
+    		
+    		page_alert(("Error: " + response.msg), "Okay", function(){
+    			confirm_alert()
+    		})
+    		break;
+    	case 8:
+    		hide_loader();
+    	    
+    	    outPutLog(response.log);
+    	    break;
+    	case 9:
+    		hide_loader();
+    		
+    		outPutLogEntry(response.logentry);
+    	    break;
+	}
+}
+
 function show_loader()
 {
 	let hidden_elements = document.getElementsByClassName("hidden");
@@ -94,7 +342,7 @@ function show_loader()
 	{
 		let hidden_element = document.getElementById(hidden_elements[incrementation].id);
 		
-		if (!hidden_element.classList.contains("interchangable-fields") && !hidden_element.classList.contains("phantom-spacer"))
+		if (!hidden_element.classList.contains("interchangable-fields") && !hidden_element.classList.contains("phantom-spacer") && !hidden_element.classList.contains("alert-container"))
 		{
 			hidden_element.classList.remove("hidden");
 			hidden_element.classList.add("visible");
@@ -115,7 +363,7 @@ function hide_loader()
 	{
 		let visible_element = document.getElementById(visible_elements[incrementation].id);
 		
-		if (!visible_element.classList.contains("interchangable-fields") && !visible_element.classList.contains("phantom-spacer"))
+		if (!visible_element.classList.contains("interchangable-fields") && !visible_element.classList.contains("phantom-spacer") && !visible_element.classList.contains("alert-container"))
 		{
 			visible_element.classList.remove("visible");
 			visible_element.classList.add("hidden");
@@ -161,12 +409,76 @@ function set_textbox_errorlevel(textbox, number)
 	}
 }
 
+function set_selectbox_errorlevel(selectbox, number)
+{
+    switch(number)
+	{
+		case 0:
+			selectbox.classList.remove("selectbox-no-status");
+			selectbox.classList.remove("selectbox-error");
+			selectbox.classList.add("selectbox-no-error");
+			break;
+		case 1:
+			selectbox.classList.remove("selectbox-error");
+			selectbox.classList.remove("selectbox-no-error");
+			selectbox.classList.add("selectbox-no-status");
+			break;
+		case 2:
+			selectbox.classList.remove("selectbox-no-status");
+			selectbox.classList.remove("selectbox-no-error");
+			selectbox.classList.add("selectbox-error");
+			break;
+	}
+}
+
 function textbox_onfocusout_event(e)
 {
 	alert(JSON.stringify(e));
 }
 
+function extend_session()
+{
+	post("renewsession", {}, false);
+	timein = 0;
+}
 
+function page_alert(message, button_label, button_action)
+{
+	show("disabling-overlay");
+	show("alert-box");
+	
+	document.getElementById("alert-message").innerHTML = message;
+	document.getElementById("alert-okay-button").value = button_label;
+	document.getElementById("alert-okay-button").onclick = button_action;
+}
+
+function confirm_alert()
+{
+	hide("alert-box");
+	hide("disabling-overlay");
+	
+	document.getElementById("alert-message").innerHTML = "";
+	document.getElementById("alert-okay-button").value = "";
+	document.getElementById("alert-okay-button").onclick = null;
+	hide_loader();
+	
+}
+
+function session_timeout(timeout)
+{
+	let alert_box = document.getElementById("alert-box");
+	
+	if ((timeout <= 30) && (timeout > 0))
+	{
+		page_alert("Session is about to expire in <span style=\"font-size: 150%; color: red;\">" + intToString(timeout) + "</span> seconds.", "Renew Session", function(){
+			extend_session();
+		});
+	}
+	else if (timeout === 0)
+	{
+		window.location.reload();
+	}
+}
 
 
 /*
