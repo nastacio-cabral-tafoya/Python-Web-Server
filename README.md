@@ -1238,26 +1238,26 @@ The server separates responsibilities into several layers:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Network                                      │
-│ socket / TCP / TLS                           │
+│ Network                                     │
+│ socket / TCP / TLS                          │
 ├─────────────────────────────────────────────┤
-│ HTTP Transport                               │
-│ request reception / body framing             │
+│ HTTP Transport                              │
+│ request reception / body framing            │
 ├─────────────────────────────────────────────┤
-│ HTTP Protocol                                │
-│ request parsing / methods / headers          │
+│ HTTP Protocol                               │
+│ request parsing / methods / headers         │
 ├─────────────────────────────────────────────┤
-│ Application Routing                          │
-│ actions / static files / errors              │
+│ Application Routing                         │
+│ actions / static files / errors             │
 ├─────────────────────────────────────────────┤
-│ Application State                            │
-│ sessions / authentication / cookies          │
+│ Application State                           │
+│ sessions / authentication / cookies         │
 ├─────────────────────────────────────────────┤
 │ Presentation                                │
-│ templates / generated HTML                   │
+│ templates / generated HTML                  │
 ├─────────────────────────────────────────────┤
-│ Persistence / Operations                      │
-│ SQLite / MySQL logging / application DBs     │
+│ Persistence / Operations                    │
+│ SQLite / MySQL logging / application DBs    │
 └─────────────────────────────────────────────┘
 ```
 
