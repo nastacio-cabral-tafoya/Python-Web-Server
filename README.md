@@ -1,5 +1,3 @@
-Absolutely. I based this README on the actual server and `HTTPHandler` implementation you provided, including its socket model, threading, HTTP parsing, dynamic Python actions, static files, sessions, templates, logging, and HTTPS companion.  
-
 # Python HTTP Server
 
 A lightweight, custom HTTP/1.x server written in Python using the standard `socket` library and a custom `HTTPHandler` application layer.
