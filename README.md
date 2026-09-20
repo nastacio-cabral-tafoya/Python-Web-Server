@@ -32,14 +32,14 @@ The server is divided into two primary layers:
                          ┌─────────────────────┐
                          │       CLIENT        │
                          │                     │
-                         │ Browser / curl / API │
+                         │ Browser / curl / API│
                          └──────────┬──────────┘
                                     │
                              HTTP / HTTPS
                                     │
                                     ▼
                  ┌──────────────────────────────────┐
-                 │          SOCKET SERVER            │
+                 │          SOCKET SERVER           │
                  │                                  │
                  │ webserver_ipv4.py                │
                  │ webserver_ipv4_ssl.py            │
