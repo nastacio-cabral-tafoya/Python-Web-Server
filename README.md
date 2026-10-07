@@ -1,1300 +1,546 @@
-# Python HTTP Server
+Absolutely. I’d make this README present Tostada as what it actually is: **a custom Python web server/framework and its deployed infrastructure**, rather than merely an application.
 
-A lightweight, custom HTTP/1.x server written in Python using the standard `socket` library and a custom `HTTPHandler` application layer.
+Here’s a GitHub-ready version:
 
-The server provides:
+# Tostada Web Server
 
-* IPv4 TCP socket handling
-* HTTP/1.x request parsing
-* HTTPS/TLS support through a separate SSL server
-* Thread-per-connection request processing
-* Configurable maximum concurrent worker threads
-* `Content-Length` request bodies
-* HTTP/1.1 chunked request bodies
-* Dynamic Python-based request actions
-* Static file serving
-* HTML templates with embedded Python
-* Cookie-based sessions
-* Session authentication state
-* SQLite application database connections
-* SQLite or MySQL server logging
-* HTTP error handling
-* Optional HTTP-to-HTTPS redirection
-* Configurable response headers and cookies
+**Tostada** is a custom HTTP/HTTPS web server and Python web framework built from the ground up using Python's networking and standard-library facilities.
+
+The project is designed to provide the underlying infrastructure for web applications while giving the developer direct control over the HTTP server, request handling, routing, sessions, authentication, templating, TLS, database connectivity, logging, and deployment environment.
+
+Tostada is currently deployed on an **AWS EC2 instance running Ubuntu Server** and is used as the foundation for web applications hosted on the server.
 
 ---
 
-## Architecture
+## Overview
 
-The server is divided into two primary layers:
+Tostada is intentionally built as multiple layers:
 
 ```text
-                         ┌─────────────────────┐
-                         │       CLIENT        │
-                         │                     │
-                         │ Browser / curl / API│
-                         └──────────┬──────────┘
-                                    │
-                             HTTP / HTTPS
-                                    │
-                                    ▼
-                 ┌──────────────────────────────────┐
-                 │          SOCKET SERVER           │
-                 │                                  │
-                 │ webserver_ipv4.py                │
-                 │ webserver_ipv4_ssl.py            │
-                 └────────────────┬─────────────────┘
-                                  │
-                                  ▼
-                         ┌─────────────────┐
-                         │    listener()   │
-                         │                 │
-                         │ accept()        │
-                         │ Semaphore       │
-                         │ Thread()        │
-                         └────────┬────────┘
-                                  │
-                                  ▼
-                         ┌─────────────────┐
-                         │ _handle_client  │
-                         └────────┬────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────┐
-                    │ _recv_http_request()    │
-                    │                         │
-                    │ Headers                 │
-                    │ Content-Length          │
-                    │ Chunked transfer        │
-                    └────────────┬────────────┘
-                                 │
-                                 ▼
-                    ┌─────────────────────────┐
-                    │      HTTPHandler        │
-                    │                         │
-                    │ parse_request()         │
-                    │ handle_request()        │
-                    │ execute_action()        │
-                    └────────────┬────────────┘
-                                 │
-                 ┌───────────────┴────────────────┐
-                 │                                │
-                 ▼                                ▼
-        ┌──────────────────┐             ┌──────────────────┐
-        │ Dynamic Action   │             │ Static File      │
-        │                  │             │                  │
-        │ actions/*.py     │             │ public files     │
-        │ exec()           │             │ binary/text data │
-        └────────┬─────────┘             └────────┬─────────┘
-                 │                                │
-                 └──────────────┬─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │ HTTP Response   │
-                       │                 │
-                       │ Status          │
-                       │ Headers         │
-                       │ Cookies         │
-                       │ Body            │
-                       └────────┬────────┘
-                                │
-                                ▼
-                         client.sendall()
-                                │
-                                ▼
-                         Close connection
-```
-
-The socket layer accepts the connection and creates a worker thread. Each worker creates its own `HTTPHandler` instance because the handler contains mutable request and response state. 
-
----
-
-# Components
-
-## `webserver_ipv4.py`
-
-The primary HTTP server.
-
-Responsibilities include:
-
-1. Loading server configuration
-2. Establishing the server root path
-3. Loading encryption keys
-4. Loading the `HTTPHandler`
-5. Creating the IPv4 TCP socket
-6. Binding the configured address and port
-7. Listening for connections
-8. Limiting concurrent workers
-9. Accepting clients
-10. Creating worker threads
-11. Receiving complete HTTP requests
-12. Sending HTTP responses
-13. Logging server activity and exceptions
-
-The server creates an IPv4 TCP socket using:
-
-```python
-socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-```
-
-and then calls `bind()` and `listen()`. 
-
----
-
-## `webserver_ipv4_ssl.py`
-
-The HTTPS version of the server.
-
-It creates a TCP socket and then establishes a TLS server context:
-
-```python
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain(
-    server_config["cert-location"],
-    server_config["key-location"]
-)
-```
-
-The socket is subsequently wrapped with:
-
-```python
-context.wrap_socket(
-    tcp_socket,
-    server_side=True,
-    do_handshake_on_connect=False
-)
-```
-
-The resulting SSL socket is passed to the same `listener()` function used by the non-SSL server. 
-
-This allows the HTTP processing pipeline to remain largely independent of whether the underlying connection is plain TCP or TLS.
-
----
-
-# `my_http_handler.py`
-
-`HTTPHandler` provides the application-level HTTP processing layer.
-
-Its primary workflow is:
-
-```text
-HTTP bytes
-    │
-    ▼
-parse_request()
-    │
-    ▼
-request dictionary
-    │
-    ▼
-handle_request()
-    │
-    ▼
-HTTP method dispatcher
-    │
-    ▼
-do_get()
-do_post()
-do_put()
-do_delete()
-do_connect()
-do_options()
-do_trace()
-do_patch()
-    │
-    ▼
-execute_action()
-    │
-    ├── Dynamic Python action
-    │
-    └── Static file fallback
-    │
-    ▼
-set_response()
-    │
-    ▼
-HTTP response bytes
-```
-
-`respond_to_request()` initializes the handler state, parses the request, optionally modifies the request for SSL redirection, dispatches the request, and returns the generated response. 
-
----
-
-# Request Processing
-
-## 1. TCP Connection
-
-The listener waits for an incoming connection:
-
-```python
-client_connection, client_address = _socket_.accept()
-```
-
-A ten-second socket timeout is then applied.
-
-```python
-client_connection.settimeout(10)
-```
-
-A daemon worker thread is created to process the connection. 
-
----
-
-## 2. Thread Limiting
-
-The server uses:
-
-```python
-Semaphore(server_config["max-threads"])
-```
-
-to limit the number of simultaneous worker threads.
-
-The listener acquires a semaphore slot before accepting a client:
-
-```text
-                    listener()
+                    Internet
                        │
                        ▼
-               semaphore.acquire()
+                 AWS EC2 Instance
                        │
                        ▼
-                  accept()
+                  Ubuntu Server
+                       │
+                 ┌─────┴─────┐
+                 │           │
+                 ▼           ▼
+             HTTP :80    HTTPS :443
+                 │           │
+                 ▼           ▼
+        webserver_ipv4.py   webserver_ipv4_ssl.py
+                 │           │
+                 └─────┬─────┘
                        │
                        ▼
-                worker thread
+                Tostada Framework
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+       Actions     Templates     Sessions
+          │            │            │
+          └────────────┼────────────┘
                        │
                        ▼
-               request processing
-                       │
-                       ▼
-               semaphore.release()
+                     MySQL
 ```
 
-This prevents the server from creating an unlimited number of worker threads. 
+The web server itself is responsible for accepting network connections and processing HTTP traffic. The framework layer provides the mechanisms required to build applications on top of the server.
 
 ---
 
-# HTTP Request Reception
+# Features
 
-`_recv_http_request()` is responsible for receiving a complete HTTP request from the TCP socket.
+## HTTP Server
 
-The function first reads until:
+Tostada implements its own HTTP server using Python sockets rather than relying on a traditional web server such as Apache or Nginx.
 
-```text
-\r\n\r\n
-```
+The server handles:
 
-is encountered.
+- TCP connections
+- HTTP request processing
+- HTTP headers
+- request bodies
+- `Content-Length`
+- chunked transfer encoding
+- HTTP methods
+- request routing
+- response generation
+- concurrent client connections
 
-This identifies the end of the HTTP header section.
-
-It then examines:
-
-* `Content-Length`
-* `Transfer-Encoding`
-
-The server supports three basic cases.
-
-### No body
-
-```text
-HTTP headers
-     │
-     ▼
-\r\n\r\n
-     │
-     ▼
-Request complete
-```
-
-### Content-Length
-
-```text
-Headers
-   │
-   ▼
-Content-Length: N
-   │
-   ▼
-Read N bytes
-   │
-   ▼
-Complete request
-```
-
-### Chunked transfer encoding
-
-```text
-Headers
-   │
-   ▼
-Transfer-Encoding: chunked
-   │
-   ▼
-Read chunk size
-   │
-   ▼
-Read chunk
-   │
-   ▼
-Repeat
-   │
-   ▼
-Zero-size chunk
-   │
-   ▼
-Read trailers
-   │
-   ▼
-Reconstruct normal request
-```
-
-The server also rejects requests with both `Content-Length` and `Transfer-Encoding` and limits the initial header section to 1 MiB. 
+Client connections are handled using worker threads, with the number of simultaneous workers controlled by the server configuration.
 
 ---
 
-# HTTP Request Parsing
+## HTTPS and TLS
 
-After the complete request has been received, `HTTPHandler.parse_request()` converts the raw HTTP request into internal request data.
+Tostada supports HTTPS using Python's `ssl` implementation.
 
-The request line is split into:
+The HTTPS server:
 
-```text
-METHOD PATH HTTP/VERSION
-```
+1. Creates a TCP listening socket.
+2. Creates a TLS server context.
+3. Loads the configured certificate and private key.
+4. Wraps the listening socket with TLS.
+5. Passes the resulting connection into the Tostada request-handling system.
 
-For example:
+TLS is therefore handled directly by the Tostada HTTPS server rather than being terminated by a reverse proxy.
 
-```text
-GET /index.html HTTP/1.1
-```
-
-becomes conceptually:
-
-```python
-{
-    "type": "GET",
-    "path": "/index.html",
-    "protocol": "HTTP/1.1"
-}
-```
-
-The parser also extracts:
-
-* Query parameters
-* HTTP headers
-* Cookies
-* Request body
-* Content-Length
-* Content-Type
-* Transfer-Encoding
-* Host
-* Connection
-
-Cookies are converted into a dictionary for application use. 
+Public and private TLS material is stored within the application's controlled filesystem and made available to the dedicated Tostada service account.
 
 ---
 
-# HTTP Methods
-
-The handler recognizes:
-
-```text
-GET
-HEAD
-POST
-PUT
-DELETE
-CONNECT
-OPTIONS
-TRACE
-PATCH
-```
-
-The method is dispatched by `handle_request()`.
-
-```text
-                    HTTP request
-                         │
-                         ▼
-                   handle_request()
-                         │
-             ┌───────────┼────────────┐
-             │           │            │
-             ▼           ▼            ▼
-            GET         POST         PUT
-             │           │            │
-             └─────┬─────┴────────────┘
-                   │
-             Additional methods
-                   │
-                   ▼
-            execute_action()
-```
-
-Unsupported methods generate a `405` response and an `Allow` header containing the supported methods. 
-
----
-
-# GET Requests
-
-For `GET`, the root path receives special handling.
-
-```text
-GET /
- │
- ▼
-default-location
- │
- ▼
-execute_action()
-```
-
-Other paths are passed directly to `execute_action()`.
-
-```text
-GET /some/path
- │
- ▼
-execute_action("/some/path")
-```
-
-
-
----
-
-# HEAD Requests
-
-`HEAD` follows the same action path as `GET`, but removes the response body after the response has been constructed.
-
-```text
-HEAD request
-     │
-     ▼
-GET-style action
-     │
-     ▼
-Build response
-     │
-     ▼
-Remove body
-     │
-     ▼
-Return headers
-```
-
-
-
----
-
-# Dynamic Actions
-
-The server uses Python files as request actions.
-
-The general path is:
-
-```text
-HTTP request
-     │
-     ▼
-HTTP method
-     │
-     ▼
-Action path
-     │
-     ▼
-actions/<method>/<action>.py
-     │
-     ▼
-Read Python source
-     │
-     ▼
-exec(action_script)
-     │
-     ▼
-Generate response body
-```
-
-`execute_action()` parses request parameters and attempts to load the corresponding Python action file.
-
-If the action exists, its contents are executed using Python's `exec()`.
-
-The action can therefore interact with the `HTTPHandler` instance and generate the response. 
-
----
-
-# Static Files
-
-If the corresponding Python action does not exist, the server falls back to `get_file_bytes()`.
-
-```text
-Action not found
-      │
-      ▼
-get_file_bytes()
-      │
-      ▼
-Open public file
-      │
-      ▼
-Read bytes
-      │
-      ▼
-Determine Content-Type
-      │
-      ▼
-Set Content-Length
-      │
-      ▼
-Build response
-```
-
-This allows URLs to resolve to ordinary static files in addition to Python actions.
-
-If the requested file cannot be read, the handler generates a `404` error response. 
-
----
-
-# Templates
-
-The handler also supports templates containing embedded Python blocks.
-
-Template code uses:
-
-```text
-<% ... %>
-```
-
-The template engine:
-
-1. Loads the template
-2. Searches for `<% ... %>` blocks
-3. Extracts the Python code
-4. Normalizes indentation
-5. Executes the Python
-6. Captures generated output
-7. Inserts the output back into the template
-8. Sets the response content type and length
-
-Conceptually:
-
-```text
-Template
-   │
-   ├── HTML
-   │
-   ├── <% Python %>
-   │
-   ├── HTML
-   │
-   └── <% Python %>
-          │
-          ▼
-     Execute Python
-          │
-          ▼
-     Generated output
-          │
-          ▼
-     Insert into HTML
-          │
-          ▼
-     Final HTML response
-```
-
-The template engine uses `template_print()` and an internal execution-output buffer to capture generated content.  
-
----
-
-# Sessions
-
-`HTTPHandler` maintains sessions in the class-level:
-
-```python
-HTTPHandler.active_sessions
-```
-
-Access to the shared session dictionary is protected by:
-
-```python
-HTTPHandler.session_lock
-```
-
-which is an `RLock`.
-
-Sessions contain:
-
-```text
-session ID
-    │
-    ├── set-date
-    ├── timeout
-    └── parameters
-          │
-          ├── authenticated
-          └── username
-```
-
-A new session ID is generated with:
-
-```python
-secrets.token_urlsafe(64)
-```
-
-The session identifier is returned to the client as a cookie.
-
-The cookie includes:
-
-```text
-Max-Age
-SameSite=Strict
-```
-
- 
-
----
-
-# Session Authentication
-
-The handler provides methods for:
-
-```text
-set_session()
-validate_session()
-get_session_parameter()
-set_session_parameter()
-session_authenticated()
-authenticate_session()
-deauthenticate_session()
-destroy_session()
-```
-
-Authentication state is stored in the session:
-
-```python
-{
-    "authenticated": True/False,
-    "username": "..."
-}
-```
-
-Session methods are synchronized through the session lock. 
-
----
-
-# Responses
-
-Responses are assembled by `set_response()`.
-
-The resulting HTTP message consists of:
-
-```text
-HTTP status line
-        +
-HTTP headers
-        +
-Set-Cookie headers
-        +
-blank line
-        +
-response body
-```
-
-For example:
-
-```text
-HTTP/1.1 200 OK\r\n
-Content-Type: text/html\r\n
-Content-Length: 123\r\n
-Set-Cookie: session=...\r\n
-\r\n
-<html>...</html>
-```
-
-The response is stored as bytes in:
-
-```python
-self.response
-```
-
-and eventually sent through:
-
-```python
-client_connection.sendall(server_response)
-```
-
- 
-
----
-
-# Error Handling
-
-The server has multiple layers of error handling.
-
-## 400-level request errors
-
-Malformed HTTP requests can raise exceptions during request reception or parsing.
-
-Examples include:
-
-* Invalid HTTP request line
-* Invalid HTTP header
-* Invalid `Content-Length`
-* Conflicting `Content-Length` headers
-* Unsupported transfer encoding
-* Incomplete request body
-* Invalid chunk size
-* Invalid chunk delimiter
-
----
-
-## 404
-
-If a requested static resource cannot be loaded:
-
-```text
-get_file_bytes()
-      │
-      ▼
-Exception
-      │
-      ▼
-set_error("404", ...)
-```
-
----
-
-## 405
-
-Unsupported HTTP methods result in:
-
-```text
-405 Method Not Allowed
-```
-
-with an `Allow` header.
-
----
-
-## 500
-
-Exceptions occurring during dynamic action execution result in:
-
-```text
-500 Internal Server Error
-```
-
-The configured error action is executed through `set_error()`.
-
-The error handler also prevents recursive error handling if the error resource itself fails. 
-
----
-
-# Logging
-
-Two logging mechanisms are present.
-
-## Database logger
-
-`logger()` supports:
-
-```text
-SQLite
-MySQL
-```
-
-For SQLite, the logger:
-
-* Opens the configured database
-* Enables WAL mode
-* Sets a busy timeout
-* Loads `Server_Config/log.sql`
-* Inserts the log record
-* Commits the transaction
-* Closes the connection
-
-For MySQL, it connects using the configured MySQL connection parameters and inserts the log entry into the `log` table. 
-
----
-
-## Text logger
-
-`_logger_()` writes directly to:
-
-```text
-log.txt
-```
-
-If the file does not exist, it creates it.
-
-This logger is used for some normal server response logging while the database logger is used for exceptions and other server events. 
-
----
-
-# Configuration
-
-The server loads:
-
-```text
-Server_Config/server_config.json
-```
-
-during startup.
-
-The configuration supplies values used for:
-
-```text
-Server host
-HTTP port
-HTTPS port
-Socket buffer size
-Connection queue limit
-Maximum worker threads
-HTTPS configuration
-Certificate location
-Private key location
-Encryption key locations
-Logging configuration
-HTTPHandler configuration
-```
-
-The server also loads:
-
-```text
-Server_Config/http_config.json
-```
-
-when each `HTTPHandler` instance is initialized.  
-
----
-
-# Encryption
-
-The server includes Fernet-based encryption helpers:
-
-```python
-encrypt(data, key)
-decrypt(data, key)
-```
-
-At startup, the server loads several key files and decrypts the configured `pepper` value.
-
-The implementation uses:
-
-```python
-from cryptography.fernet import Fernet
-```
-
-
-
----
-
-# HTTPS
-
-HTTPS is implemented in `webserver_ipv4_ssl.py`.
-
-The HTTPS startup sequence is:
-
-```text
-Start
- │
- ▼
-Create IPv4 TCP socket
- │
- ▼
-Check HTTPS enabled
- │
- ▼
-Create SSLContext
- │
- ▼
-Load certificate
- │
- ▼
-Load private key
- │
- ▼
-bind()
- │
- ▼
-listen()
- │
- ▼
-wrap_socket()
- │
- ▼
-listener()
- │
- ▼
-Normal HTTPHandler pipeline
-```
-
-The same request-processing machinery is therefore used after the TLS layer has established the socket. 
-
----
-
-# HTTP-to-HTTPS Redirect
-
-The non-SSL server can be configured to force HTTPS.
-
-When enabled, `respond_to_request()` changes the requested path to:
-
-```text
-/redirecttossl
-```
-
-and places the original path into the request parameters.
-
-This allows the application's configured redirect action to generate the redirect response. 
-
----
-
-# Database Access
-
-`HTTPHandler` provides:
-
-```python
-create_sqlite_connection(db_file)
-```
-
-which creates a SQLite connection inside the configured private database directory.
-
-The method uses the configured:
-
-```text
-root-path
-private-files
-databases
-```
-
-path structure. 
-
----
-
-# Directory Concept
-
-The implementation expects a configuration-driven directory structure similar to:
-
-```text
-Project/
-│
-├── webserver_ipv4.py
-├── webserver_ipv4_ssl.py
-├── my_http_handler.py
-│
-├── Server_Config/
-│   ├── server_config.json
-│   ├── http_config.json
-│   └── log.sql
-│
-├── Actions/
-│   ├── GET/
-│   ├── POST/
-│   ├── PUT/
-│   ├── DELETE/
-│   ├── CONNECT/
-│   ├── OPTIONS/
-│   ├── TRACE/
-│   └── PATCH/
-│
-├── Public/
-│   └── ...
-│
-├── Templates/
-│   └── ...
-│
-└── Private/
-    └── databases/
-        └── ...
-```
-
-The exact directory names and locations are controlled by `http_config.json`; the server does not hard-code all of these names.
-
----
-
-# Complete Request Lifecycle
-
-A normal request can be summarized as:
-
-```text
-CLIENT
-  │
-  │ HTTP request
-  ▼
-TCP / TLS SOCKET
-  │
-  ▼
-listener()
-  │
-  ├── Semaphore
-  │
-  ├── accept()
-  │
-  └── Thread()
-          │
-          ▼
-    _handle_client()
-          │
-          ▼
-    _recv_http_request()
-          │
-          ├── Read headers
-          ├── Content-Length
-          └── Chunked body
-          │
-          ▼
-      HTTPHandler()
-          │
-          ▼
-    respond_to_request()
-          │
-          ▼
-     parse_request()
-          │
-          ▼
-    handle_request()
-          │
-          ▼
-     HTTP method
-          │
-          ▼
-       do_*()
-          │
-          ▼
-   execute_action()
-       /         \
-      /           \
-     ▼             ▼
-Python action   Static file
-     │             │
-     └──────┬──────┘
-            ▼
-      set_response()
-            │
-            ▼
-      HTTP response
-            │
-            ▼
-      sendall()
-            │
-            ▼
-     close socket
-            │
-            ▼
-   semaphore.release()
-```
+## Application Framework
+
+Tostada provides an application layer above the HTTP server.
+
+Applications can use:
+
+- Request handling
+- HTTP method dispatch
+- Actions
+- Dynamic HTML generation
+- Templates
+- Sessions
+- Cookies
+- Authentication
+- Database connectivity
+- Logging
+- Server configuration
+
+Application actions are dynamically loaded by the HTTP handler, allowing application functionality to be separated into individual action modules.
+
+This allows an application to be developed independently of the lower-level HTTP implementation.
 
 ---
 
 # Threading Model
 
-The server uses a bounded thread-per-connection architecture.
+Tostada uses a threaded request model.
+
+When a client connects, the server creates a worker thread to handle the connection:
 
 ```text
-                       LISTENER
-                          │
-             ┌────────────┼────────────┐
-             │            │            │
-             ▼            ▼            ▼
-          Thread 1     Thread 2     Thread 3
-             │            │            │
-             ▼            ▼            ▼
-         Handler A    Handler B    Handler C
-             │            │            │
-             ▼            ▼            ▼
-         Request A    Request B    Request C
+Client
+  │
+  ▼
+Listening socket
+  │
+  ▼
+Worker thread
+  │
+  ▼
+HTTPHandler
+  │
+  ▼
+Application action
 ```
 
-Each worker receives its own `HTTPHandler` instance.
+The server limits the number of concurrent worker threads through its configuration.
 
-Shared session state remains class-level and is protected by `RLock`.
+## Thread-local database connections
 
-The maximum number of active workers is controlled by the configured semaphore.  
+Database access is designed around the same threading model.
+
+The framework exposes a global `db_connection` interface to the HTTP handler and application actions, while the actual database connection is maintained separately for each worker thread.
+
+Conceptually:
+
+```text
+Tostada Process
+│
+├── db_connection interface
+│
+├── Thread 1
+│   ├── HTTPHandler
+│   ├── Action
+│   └── MySQL connection 1
+│
+├── Thread 2
+│   ├── HTTPHandler
+│   ├── Action
+│   └── MySQL connection 2
+│
+└── Thread 3
+    ├── HTTPHandler
+    ├── Action
+    └── MySQL connection 3
+```
+
+This allows existing application actions to use `db_connection` without sharing one physical MySQL connection between concurrent worker threads.
+
+Connections are closed when their associated request thread finishes.
 
 ---
 
-# Server Startup
+# Sessions and Cookies
 
-The non-SSL server startup sequence is:
+Tostada provides session management using HTTP cookies.
 
-```text
-Program starts
-     │
-     ▼
-Determine absolute path
-     │
-     ▼
-Change working directory
-     │
-     ▼
-Load server_config.json
-     │
-     ▼
-Load encryption keys
-     │
-     ▼
-Decrypt configuration values
-     │
-     ▼
-Load my_http_handler.py
-     │
-     ▼
-Create HTTPHandler
-     │
-     ▼
-non_ssl_server()
-     │
-     ▼
-Create TCP socket
-     │
-     ▼
-bind()
-     │
-     ▼
-listen()
-     │
-     ▼
-listener()
-     │
-     ▼
-Wait for clients
-```
+A session identifier is stored in a cookie configured with attributes such as:
 
-The supplied IPv4 server starts its main server process by calling `non_ssl_server()` after configuration and handler initialization. 
+- `Max-Age`
+- `SameSite`
+
+The session system allows applications to maintain state across HTTP requests while keeping session data associated with the appropriate client.
 
 ---
 
-# Dependencies
+# Authentication
 
-The implementation uses Python standard-library modules including:
+The framework provides infrastructure for authenticated application access.
 
-```text
-os
-ssl
-json
-time
-atexit
-socket
-secrets
-sqlite3
-datetime
-traceback
-subprocess
-threading
-```
-
-It also depends on:
-
-```text
-cryptography
-```
-
-for Fernet encryption.
-
-The MySQL logging path additionally imports:
-
-```text
-mysql.connector
-```
-
-when MySQL logging is configured.  
+Authentication state is integrated with the server's session mechanism so that authenticated requests can be associated with the appropriate application user.
 
 ---
 
-# Security Considerations
+# Dynamic Actions
 
-This server provides several security-related mechanisms, including:
+Application functionality is organized into individual action scripts.
 
-* TLS support
-* Encrypted configuration material
-* Random session identifiers
-* Session expiration
-* `SameSite=Strict` session cookies
-* Maximum HTTP header size
-* Socket timeouts
-* Maximum concurrent worker threads
-* Serialized access to shared session state
-* HTTP request validation
+The HTTP handler can load and execute the appropriate action based on the incoming request.
 
-However, this is a custom HTTP server and application framework. Deployments should therefore be reviewed carefully before being exposed to an untrusted network.
+This allows an application to be structured around individual endpoints rather than placing all application logic directly inside the HTTP server.
 
-In particular, the framework intentionally executes application-controlled Python files using:
+Conceptually:
 
-```python
-exec(action_script)
+```text
+HTTP Request
+     │
+     ▼
+HTTPHandler
+     │
+     ▼
+Route / Action
+     │
+     ▼
+Action Script
+     │
+     ├── Database
+     ├── Session
+     ├── Authentication
+     └── Response
 ```
-
-and executes embedded Python in templates.
-
-Action and template files should therefore be treated as executable server-side code rather than ordinary untrusted content.  
 
 ---
 
-# Design Philosophy
+# Database
 
-The server separates responsibilities into several layers:
+Tostada supports database-backed applications.
 
-```text
-┌─────────────────────────────────────────────┐
-│ Network                                     │
-│ socket / TCP / TLS                          │
-├─────────────────────────────────────────────┤
-│ HTTP Transport                              │
-│ request reception / body framing            │
-├─────────────────────────────────────────────┤
-│ HTTP Protocol                               │
-│ request parsing / methods / headers         │
-├─────────────────────────────────────────────┤
-│ Application Routing                         │
-│ actions / static files / errors             │
-├─────────────────────────────────────────────┤
-│ Application State                           │
-│ sessions / authentication / cookies         │
-├─────────────────────────────────────────────┤
-│ Presentation                                │
-│ templates / generated HTML                  │
-├─────────────────────────────────────────────┤
-│ Persistence / Operations                    │
-│ SQLite / MySQL logging / application DBs    │
-└─────────────────────────────────────────────┘
-```
+The deployed environment uses **MySQL**.
 
-This architecture allows the low-level socket listener to remain largely independent of the application's request-handling logic.
+Database configuration is supplied through the server configuration system rather than being hard-coded into individual application actions.
+
+The framework also retains support for SQLite for applications that do not require a MySQL server.
 
 ---
 
-# Summary
+# Logging
 
-This project implements a custom Python web server rather than relying on Python's higher-level HTTP server frameworks.
+The server maintains application/server logging to assist with:
 
-At its core, the system performs:
+- startup diagnostics
+- request processing
+- authentication events
+- application errors
+- server errors
+- debugging
+- operational troubleshooting
+
+Logs are particularly useful when diagnosing problems across the different layers of the system.
+
+---
+
+# Deployment
+
+Tostada is deployed on an AWS EC2 instance running Ubuntu Server.
+
+The application is installed under:
 
 ```text
-Socket
-  ↓
-Connection
-  ↓
-Worker Thread
-  ↓
-HTTP Message Reception
-  ↓
-HTTP Parsing
-  ↓
-Method Dispatch
-  ↓
-Dynamic Action / Static File
-  ↓
-Response Construction
-  ↓
-HTTP Response
-  ↓
-Socket Close
+/tostada
 ```
 
-HTTPS adds a TLS layer around the socket, while the same listener and `HTTPHandler` architecture processes the resulting connection.
+The directory and its contents are owned by:
 
-The `HTTPHandler` additionally provides application-level sessions, cookies, authentication state, template execution, database connectivity, static resources, dynamic Python actions, and configurable error handling.
+```text
+tostada:tostada
+```
 
-This is ready to use as a `README.md`.
+The Tostada server runs as a dedicated Linux service account named:
+
+```text
+tostada
+```
+
+The account is not a sudo user and is not intended to have administrative access to the rest of the operating system.
+
+---
+
+# systemd Integration
+
+Tostada is managed by systemd.
+
+The service runs using the dedicated `tostada` user and uses `/tostada` as its working/application directory.
+
+The deployment uses Linux capabilities to permit the service to bind to privileged network ports without requiring the application itself to run as root.
+
+The resulting privilege model is:
+
+```text
+root
+ │
+ ├── Ubuntu/system administration
+ │
+ └── systemd
+       │
+       ▼
+   tostada.service
+       │
+       ▼
+   User: tostada
+       │
+       ▼
+   /tostada
+```
+
+This prevents the web server from requiring unrestricted root privileges.
+
+---
+
+# Filesystem Isolation
+
+The application is isolated under:
+
+```text
+/tostada
+```
+
+The directory is owned by the `tostada` account and is protected through normal Unix filesystem permissions.
+
+The service account does not have sudo privileges and is intended to access only the files and resources necessary for the application.
+
+This provides a security boundary between the application and the rest of the Ubuntu installation.
+
+---
+
+# File Browser Quantum
+
+**File Browser Quantum** is installed alongside Tostada to provide browser-based administration and development access to the application filesystem.
+
+File Browser runs under the same:
+
+```text
+tostada:tostada
+```
+
+service identity and is configured with `/tostada` as its accessible base path.
+
+Therefore:
+
+```text
+File Browser
+     │
+     ▼
+   tostada
+     │
+     ▼
+ /tostada
+```
+
+File Browser does not provide general administrative access to the Ubuntu filesystem.
+
+This allows the application files to be managed remotely through a web interface while retaining the same operating-system privilege boundary used by the Tostada server.
+
+---
+
+# Deployment Architecture
+
+The deployed system can be represented as:
+
+```text
+                           INTERNET
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                 HTTP :80           HTTPS :443
+                    │                   │
+                    ▼                   ▼
+             ┌─────────────┐    ┌─────────────┐
+             │ Tostada HTTP│    │Tostada HTTPS│
+             │   Server    │    │    Server   │
+             └──────┬──────┘    └──────┬──────┘
+                    │                  │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                      Tostada Framework
+                             │
+                 ┌───────────┼───────────┐
+                 │           │           │
+                 ▼           ▼           ▼
+              Actions     Sessions    Templates
+                 │           │           │
+                 └───────────┼───────────┘
+                             │
+                             ▼
+                           MySQL
+
+
+                    Ubuntu Server
+                    ─────────────
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+       tostada.service       filebrowser.service
+              │                     │
+        User: tostada         User: tostada
+              │                     │
+              ▼                     ▼
+          /tostada              /tostada
+```
+
+---
+
+# Security Model
+
+The deployment intentionally avoids running the web server as root.
+
+The application instead uses:
+
+- A dedicated Unix service account
+- Restricted filesystem permissions
+- systemd service isolation
+- Linux capabilities for privileged port binding
+- TLS for encrypted HTTP traffic
+- Session-based authentication
+- Controlled access to TLS key material
+- A restricted File Browser filesystem root
+
+The goal is to minimize the privileges available to the application while still allowing it to perform the operations required to function as a web server.
+
+---
+
+# Directory Structure
+
+The primary application directory is:
+
+```text
+/tostada
+```
+
+The installation contains components including:
+
+```text
+/tostada
+├── actions/
+├── web/
+├── templates/
+├── Server_Config/
+├── Certifications/
+├── documentation/
+├── webserver_ipv4.py
+├── webserver_ipv4_ssl.py
+├── my_http_handler.py
+└── start.sh
+```
+
+The exact contents may evolve as the framework and applications built on top of it develop.
+
+---
+
+# Development Philosophy
+
+Tostada is intentionally built rather than assembled from a high-level web framework.
+
+The project provides direct exposure to the layers normally hidden by frameworks:
+
+```text
+TCP
+ ↓
+Sockets
+ ↓
+HTTP
+ ↓
+TLS
+ ↓
+HTTP Handler
+ ↓
+Routing / Actions
+ ↓
+Sessions / Authentication
+ ↓
+Templates
+ ↓
+Database
+ ↓
+Application
+```
+
+This makes Tostada both a usable web framework and an exploration of how web application infrastructure works underneath higher-level abstractions.
+
+---
+
+# Current Deployment Environment
+
+The current deployment includes:
+
+| Component | Technology |
+|---|---|
+| Cloud | AWS EC2 |
+| Operating System | Ubuntu Server |
+| Web Server | Tostada |
+| Language | Python |
+| HTTP | Custom implementation |
+| HTTPS | Python TLS / `ssl` |
+| Process Manager | systemd |
+| Database | MySQL |
+| Development/File Management | File Browser Quantum |
+| Application User | `tostada` |
+| Application Root | `/tostada` |
+
+---
+
+# Project Goals
+
+The long-term goal of Tostada is to provide a lightweight, understandable Python web framework that remains close to the underlying mechanisms of web servers while still providing the abstractions needed to build practical applications.
+
+Rather than hiding the server behind a large framework stack, Tostada is intended to make the entire application path understandable:
+
+> **A request enters the machine, reaches a socket, is processed by Tostada, dispatched to application code, interacts with the database, and produces an HTTP response.**
+
+The framework and its deployment environment are both part of the project.
+
+---
+
+# Applications Built on Tostada
+
+Tostada is intended to serve as the foundation for applications rather than being the application itself.
+
+The framework is being used as the platform for a forthcoming **CSU Global Computer Science capstone application**.
+
+The capstone application will therefore demonstrate the use of Tostada as an application platform while Tostada itself remains a separate underlying software project.
+
+---
+
+# Status
+
+Tostada is an actively developed project.
+
+The server is currently deployed on an AWS EC2 Ubuntu instance and is capable of serving applications over HTTP and HTTPS, with MySQL database integration and a dedicated systemd-managed service account.
+
+The framework continues to evolve as additional requirements and real-world deployment problems are encountered.
+
+---
+
+## Author
+
+**Nastacio Tafoya**
+
+Tostada is a personal software engineering project developed as an exploration of web-server architecture, Python systems programming, web application development, Linux administration, networking, security, and database-backed applications.
