@@ -75,13 +75,13 @@ At a high level:
      Client
 ```
 
-The two server processes intentionally share the same application handler and configuration model. The non-SSL process binds the configured non-SSL port, while the SSL process creates an `SSLContext`, loads the configured certificate/key, binds the configured SSL port, and passes the TLS socket to the same listener implementation. fileciteturn0file3L382-L397 fileciteturn0file1L382-L397
+The two server processes intentionally share the same application handler and configuration model. The non-SSL process binds the configured non-SSL port, while the SSL process creates an `SSLContext`, loads the configured certificate/key, binds the configured SSL port, and passes the TLS socket to the same listener implementation.
 
 ---
 
 # 2. Runtime Environment
 
-The documented production host is an x86-64 Ubuntu 26.04.1 LTS virtual machine running under Xen. The architecture snapshot records a single exposed CPU, approximately 1.9 GiB RAM, a 30 GiB disk, and an ext4 root filesystem. fileciteturn0file0L8-L23 fileciteturn0file0L37-L64 fileciteturn0file0L85-L110
+The documented production host is an x86-64 Ubuntu 26.04.1 LTS virtual machine running under Xen. The architecture snapshot records a single exposed CPU, approximately 1.9 GiB RAM, a 30 GiB disk, and an ext4 root filesystem.
 
 The recorded Python runtime is:
 
@@ -137,7 +137,7 @@ WantedBy=multi-user.target
 
 The application therefore runs as the unprivileged `tostada` account while retaining the capability required to bind privileged ports such as 80 and 443. fileciteturn0file0L181-L230
 
-The `tostada` account is not permitted to use `sudo` according to the recorded deployment. `/tostada` is also owned by `tostada:tostada` with restrictive directory permissions. fileciteturn0file0L230-L280
+The `tostada` account is not permitted to use `sudo` according to the recorded deployment. `/tostada` is also owned by `tostada:tostada` with restrictive directory permissions.
 
 ---
 
@@ -185,7 +185,7 @@ The observed deployment contains the following structure:
 └── webserver_ipv4_ssl.py
 ```
 
-The architecture snapshot also records restrictive ownership/permissions on the application tree and shows the separation between public files, private files, actions, templates, certificates, configuration, and SQL scripts. fileciteturn0file0L230-L280
+The architecture snapshot also records restrictive ownership/permissions on the application tree and shows the separation between public files, private files, actions, templates, certificates, configuration, and SQL scripts.
 
 ---
 
@@ -205,7 +205,7 @@ Its responsibilities are:
 6. Initialize an `HTTPHandler` instance.
 7. Start the non-SSL TCP listener.
 
-The startup sequence is performed directly when the module is executed. fileciteturn0file3L400-L449
+The startup sequence is performed directly when the module is executed.
 
 ## Database initialization
 
@@ -218,7 +218,7 @@ PRAGMA busy_timeout=30000;
 
 This is intended to allow concurrent readers and make writers wait rather than immediately failing with `database is locked`. fileciteturn0file3L435-L447
 
-For MySQL, the process imports `mysql.connector` and creates a connection using the configured host, port, database, username, and password. fileciteturn0file3L448-L451
+For MySQL, the process imports `mysql.connector` and creates a connection using the configured host, port, database, username, and password.
 
 ## HTTP listener
 
@@ -236,7 +236,7 @@ listen(queue-limit)
 listener()
 ```
 
-The server's `non_ssl_server()` function obtains the host and port from configuration, binds the socket, listens using the configured queue limit, and enters the common listener. fileciteturn0file3L382-L397
+The server's `non_ssl_server()` function obtains the host and port from configuration, binds the socket, listens using the configured queue limit, and enters the common listener.
 
 ## Optional HTTP-to-HTTPS redirection
 
@@ -247,7 +247,7 @@ enable-https.force-ssl.force
 enable-https.force-ssl.true-path
 ```
 
-to the listener. When forced SSL is enabled, the handler replaces the requested path with `/redirecttossl` and supplies the original destination as a query parameter. fileciteturn0file3L382-L397 fileciteturn17file8
+to the listener. When forced SSL is enabled, the handler replaces the requested path with `/redirecttossl` and supplies the original destination as a query parameter.
 
 ---
 
@@ -273,7 +273,7 @@ The TLS server:
 6. Binds the TCP socket.
 7. Starts listening.
 8. Wraps the socket using the SSL context.
-9. Passes the resulting TLS socket to `listener()`. fileciteturn0file1L382-L397
+9. Passes the resulting TLS socket to `listener()`.
 
 The code explicitly disables automatic handshake-on-connect:
 
@@ -307,7 +307,7 @@ For every accepted connection it:
 4. Starts a daemon worker thread.
 5. Releases the semaphore when that worker finishes.
 
-The worker creates a new `HTTPHandler` instance for the connection. This is important because `HTTPHandler` contains mutable per-request/per-response state. fileciteturn0file1L286-L328 fileciteturn0file1L331-L378
+The worker creates a new `HTTPHandler` instance for the connection. This is important because `HTTPHandler` contains mutable per-request/per-response state.
 
 Conceptually:
 
@@ -363,7 +363,7 @@ Read until CRLF CRLF
 Complete HTTP request bytes
 ```
 
-The implementation limits the initial header section to 1 MiB and rejects incomplete or malformed headers. It rejects requests containing both `Content-Length` and `Transfer-Encoding`. fileciteturn0file1L119-L198
+The implementation limits the initial header section to 1 MiB and rejects incomplete or malformed headers. It rejects requests containing both `Content-Length` and `Transfer-Encoding`.
 
 ## Content-Length
 
@@ -379,7 +379,7 @@ Chunks are decoded into a normal body and the request is rebuilt so that the han
 Content-Length: <decoded size>
 ```
 
-instead of the original transfer encoding. fileciteturn0file1L200-L283
+instead of the original transfer encoding.
 
 ---
 
@@ -400,7 +400,7 @@ active_sessions = {}
 session_lock = RLock()
 ```
 
-Each request receives a fresh handler instance, while session state is shared between handler instances. fileciteturn0file2L1-L18
+Each request receives a fresh handler instance, while session state is shared between handler instances.
 
 ---
 
@@ -463,7 +463,7 @@ path            = /dashboard
 path-parameters = foo=bar
 ```
 
-Headers are treated case-insensitively for lookup. Cookies are parsed into a dictionary. Common headers are additionally exposed through conventional names such as `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Host`, `Connection`, and `Cookie`. fileciteturn0file2L27-L141
+Headers are treated case-insensitively for lookup. Cookies are parsed into a dictionary. Common headers are additionally exposed through conventional names such as `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Host`, `Connection`, and `Cookie`.
 
 ---
 
@@ -483,7 +483,7 @@ TRACE
 PATCH
 ```
 
-Unknown methods result in a `405` response and an `Allow` header listing the supported methods. fileciteturn17file0
+Unknown methods result in a `405` response and an `Allow` header listing the supported methods.
 
 ## GET
 
@@ -550,7 +550,7 @@ It then reads the Python source and executes it with:
 exec(action_script)
 ```
 
-The action therefore executes inside the handler's Python runtime context. fileciteturn3file7
+The action therefore executes inside the handler's Python runtime context.
 
 This is the application's equivalent of a controller/router layer.
 
@@ -568,7 +568,7 @@ Blank values are preserved.
 
 The resulting dictionary is made available to the action execution context.
 
-For compatibility, bare query arguments that do not contain `=` are also retained with a value of `None`. fileciteturn3file7
+For compatibility, bare query arguments that do not contain `=` are also retained with a value of `None`.
 
 For example:
 
@@ -605,7 +605,7 @@ The file is returned as raw bytes.
 
 The response `Content-Type` is selected from the configured extension-to-MIME mapping.
 
-Text and common structured application types receive a UTF-8 charset suffix. fileciteturn3file7
+Text and common structured application types receive a UTF-8 charset suffix.
 
 Conceptually:
 
@@ -698,7 +698,7 @@ Location: <path>
 HTTP status: 302 Found
 ```
 
-The SSL-force mechanism uses this infrastructure to redirect HTTP requests to HTTPS. fileciteturn0file2L142-L147
+The SSL-force mechanism uses this infrastructure to redirect HTTP requests to HTTPS.
 
 ---
 
@@ -724,7 +724,7 @@ _handling_error
 
 so that an error page that itself fails does not recursively invoke the same error mechanism forever.
 
-If an error handler cannot itself be loaded, the handler falls back to directly setting the status response. fileciteturn3file8
+If an error handler cannot itself be loaded, the handler falls back to directly setting the status response.
 
 The application therefore supports configurable resources for errors such as:
 
@@ -762,7 +762,7 @@ and the parameters initially include:
 authenticated = False
 ```
 
-Session methods are protected by a shared `RLock`, allowing multiple worker threads to access session state safely. fileciteturn0file2L210-L257
+Session methods are protected by a shared `RLock`, allowing multiple worker threads to access session state safely.
 
 ## Session creation
 
@@ -781,7 +781,7 @@ The session ID is generated with:
 secrets.token_urlsafe(64)
 ```
 
-which provides a large random identifier space. fileciteturn0file2L210-L240
+which provides a large random identifier space.
 
 ## Session timeout
 
@@ -795,7 +795,7 @@ timeout_to_seconds()
 
 converts it to seconds.
 
-Session validation compares the current age against the configured timeout. fileciteturn0file1L108-L115 fileciteturn0file2L242-L257
+Session validation compares the current age against the configured timeout.
 
 ## Authentication state
 
@@ -824,7 +824,7 @@ and completely removed with:
 destroy_session(session_id)
 ```
 
-The handler also provides getters/setters for arbitrary session parameters. fileciteturn0file2L270-L331
+The handler also provides getters/setters for arbitrary session parameters.
 
 ---
 
@@ -846,7 +846,7 @@ SameSite=Strict
 Domain=nastacios.com
 ```
 
-The cookie construction code does not automatically add every modern cookie security attribute; callers are responsible for whatever attributes they supply. fileciteturn0file2L230-L240 fileciteturn0file2L326-L344
+The cookie construction code does not automatically add every modern cookie security attribute; callers are responsible for whatever attributes they supply.
 
 ---
 
@@ -869,7 +869,7 @@ server_config["database"]["type"]
 
 The main server creates a SQLite connection with a 30-second timeout.
 
-WAL mode and a 30-second busy timeout are enabled during startup. fileciteturn0file3L439-L447
+WAL mode and a 30-second busy timeout are enabled during startup.
 
 The HTTP handler also provides:
 
@@ -877,7 +877,7 @@ The HTTP handler also provides:
 create_sqlite_connection(db_file)
 ```
 
-which resolves application SQLite databases under the configured private-files database directory. fileciteturn17file8
+which resolves application SQLite databases under the configured private-files database directory.
 
 ## MySQL
 
@@ -897,7 +897,7 @@ user
 password
 ```
 
-The architecture snapshot shows the production MySQL server listening on loopback rather than on a public interface. fileciteturn0file0L137-L150
+The architecture snapshot shows the production MySQL server listening on loopback rather than on a public interface.
 
 ---
 
@@ -935,7 +935,7 @@ loguser
 logstr
 ```
 
-The database transaction is committed after insertion. fileciteturn0file1L24-L89
+The database transaction is committed after insertion.
 
 ## Flat-file logger
 
@@ -953,7 +953,7 @@ logfile, logfunc, loguser, logstr
 
 format.
 
-This provides a simpler fallback/debugging log in addition to the database logger. fileciteturn0file1L92-L99
+This provides a simpler fallback/debugging log in addition to the database logger.
 
 ---
 
@@ -976,7 +976,7 @@ saltskey
 userskey
 ```
 
-and loads an encrypted pepper using the configured pepper key. fileciteturn0file1L16-L22 fileciteturn0file1L414-L429
+and loads an encrypted pepper using the configured pepper key.
 
 The design therefore separates secret/key material from the main JSON configuration.
 
@@ -1019,7 +1019,7 @@ fullchain.pem
 privkey.pem
 ```
 
-symlinks. fileciteturn0file0L850-L875
+symlinks.
 
 The application also has its own certificate-related directories under:
 
@@ -1064,7 +1064,7 @@ Client reconnects using HTTPS
 Port 443
 ```
 
-The `true-path` setting determines whether the original requested path is preserved in the redirect information. fileciteturn17file8
+The `true-path` setting determines whether the original requested path is preserved in the redirect information.
 
 ---
 
@@ -1112,7 +1112,7 @@ A complete request follows this sequence:
 19. Thread slot released
 ```
 
-The handler explicitly resets its per-request state before parsing and processing the request. fileciteturn17file8
+The handler explicitly resets its per-request state before parsing and processing the request.
 
 ---
 
@@ -1124,7 +1124,7 @@ After the response is sent, the worker closes the connection.
 
 This is simpler than implementing persistent HTTP/1.1 connections but means connection establishment/teardown occurs for each request.
 
-The receiver's own documentation explicitly identifies the one-request-per-connection behavior. fileciteturn0file1L119-L125
+The receiver's own documentation explicitly identifies the one-request-per-connection behavior.
 
 ---
 
@@ -1142,7 +1142,7 @@ A semaphore limits the number of simultaneously active worker threads.
 max-threads
 ```
 
-therefore represents an important capacity-control setting. fileciteturn0file1L331-L378
+therefore represents an important capacity-control setting.
 
 ## Session synchronization
 
@@ -1152,7 +1152,7 @@ Shared session state is protected with:
 RLock()
 ```
 
-through the `_synchronized_session_method` decorator. fileciteturn0file2L1-L8
+through the `_synchronized_session_method` decorator.
 
 ## Database concurrency
 
@@ -1181,7 +1181,7 @@ The current design includes several deliberate security controls:
 - Private files are separated from public files at the application directory level.
 - MySQL is observed listening on loopback in the documented deployment.
 
-The deployment also has AppArmor active at the operating-system level. fileciteturn0file0L230-L280
+The deployment also has AppArmor active at the operating-system level.
 
 ---
 
@@ -1208,7 +1208,7 @@ Therefore:
 - Backups and deployment tooling must preserve ownership and permissions.
 - Any future plugin/action mechanism should be treated as executable code deployment.
 
-The current architecture's restrictive `/tostada` permissions are therefore especially important. fileciteturn0file0L230-L280
+The current architecture's restrictive `/tostada` permissions are therefore especially important.
 
 ---
 
@@ -1338,7 +1338,7 @@ TCP :80   -> webserver_ipv4.py
 TCP :443  -> webserver_ipv4_ssl.py
 ```
 
-The architecture snapshot also shows SSH on port 22 and MySQL on loopback port 3306. fileciteturn0file0L137-L152
+The architecture snapshot also shows SSH on port 22 and MySQL on loopback port 3306.
 
 ---
 
@@ -1362,7 +1362,7 @@ start.sh
 └── webserver_ipv4_ssl.py
 ```
 
-The documented deployment showed exactly this arrangement. fileciteturn0file0L181-L205
+The documented deployment showed exactly this arrangement.
 
 ---
 
@@ -1380,7 +1380,7 @@ Check listeners:
 sudo ss -ltnp | grep 3306
 ```
 
-The documented deployment uses MySQL 8.4.11 and the server is bound to `127.0.0.1:3306`. fileciteturn0file0L701-L750
+The documented deployment uses MySQL 8.4.11 and the server is bound to `127.0.0.1:3306`.
 
 For SQLite, inspect the configured SQLite database path and ensure the application user owns the database and has write access.
 
@@ -1565,7 +1565,7 @@ PRAGMA journal_mode=WAL;
 PRAGMA busy_timeout=30000;
 ```
 
-but application-level connection management still matters. fileciteturn0file3L439-L447
+but application-level connection management still matters.
 
 ## 404 responses
 
@@ -1867,7 +1867,7 @@ Systemd service:
     tostada.service
 ```
 
-The service was recorded as active and running, with both Python web-server processes underneath `/tostada/start.sh`. fileciteturn0file0L181-L230
+The service was recorded as active and running, with both Python web-server processes underneath `/tostada/start.sh`.
 
 ---
 
