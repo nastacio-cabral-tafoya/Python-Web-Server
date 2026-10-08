@@ -1,7 +1,3 @@
-Absolutely. I’d make this README present Tostada as what it actually is: **a custom Python web server/framework and its deployed infrastructure**, rather than merely an application.
-
-Here’s a GitHub-ready version:
-
 # Tostada Web Server
 
 **Tostada** is a custom HTTP/HTTPS web server and Python web framework built from the ground up using Python's networking and standard-library facilities.
