@@ -19,7 +19,7 @@ The current implementation is split primarily across:
 - `web/certifications/` — application certificate/key storage area.
 - `start.sh` — process launcher used by the systemd service.
 
-The production deployment observed in the architecture record runs the application from `/tostada` under a dedicated `tostada` system account. The service is managed by systemd as `tostada.service`. The recorded deployment runs both the HTTP and HTTPS Python processes concurrently. fileciteturn0file0L181-L230
+The production deployment observed in the architecture record runs the application from `/tostada` under a dedicated `tostada` system account. The service is managed by systemd as `tostada.service`. The recorded deployment runs both the HTTP and HTTPS Python processes concurrently.
 
 ---
 
@@ -90,9 +90,9 @@ Python 3.14.4
 /usr/bin/python3
 ```
 
-The deployment includes `cryptography` and `mysql-connector-python`; the architecture snapshot records `cryptography 46.0.5` and `mysql-connector-python 26.7.0`. fileciteturn0file0L701-L750
+The deployment includes `cryptography` and `mysql-connector-python`; the architecture snapshot records `cryptography 46.0.5` and `mysql-connector-python 26.7.0`.
 
-The server's recorded private IPv4 address is `172.31.9.59`. HTTP was observed listening on port 80 and HTTPS on port 443. MySQL was observed bound to loopback on port 3306. fileciteturn0file0L118-L150
+The server's recorded private IPv4 address is `172.31.9.59`. HTTP was observed listening on port 80 and HTTPS on port 443. MySQL was observed bound to loopback on port 3306.
 
 > **Deployment note:** The private IP above is an environment snapshot, not an application constant. The actual bind address comes from `server_config.json`.
 
@@ -135,7 +135,7 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 WantedBy=multi-user.target
 ```
 
-The application therefore runs as the unprivileged `tostada` account while retaining the capability required to bind privileged ports such as 80 and 443. fileciteturn0file0L181-L230
+The application therefore runs as the unprivileged `tostada` account while retaining the capability required to bind privileged ports such as 80 and 443.
 
 The `tostada` account is not permitted to use `sudo` according to the recorded deployment. `/tostada` is also owned by `tostada:tostada` with restrictive directory permissions.
 
@@ -216,7 +216,7 @@ PRAGMA journal_mode=WAL;
 PRAGMA busy_timeout=30000;
 ```
 
-This is intended to allow concurrent readers and make writers wait rather than immediately failing with `database is locked`. fileciteturn0file3L435-L447
+This is intended to allow concurrent readers and make writers wait rather than immediately failing with `database is locked`. 
 
 For MySQL, the process imports `mysql.connector` and creates a connection using the configured host, port, database, username, and password.
 
@@ -367,7 +367,7 @@ The implementation limits the initial header section to 1 MiB and rejects incomp
 
 ## Content-Length
 
-When `Content-Length` is present, the receiver continues reading until the specified number of body bytes have arrived. fileciteturn0file1L189-L198
+When `Content-Length` is present, the receiver continues reading until the specified number of body bytes have arrived. 
 
 ## Chunked transfer encoding
 
@@ -495,7 +495,7 @@ Other GET paths are passed directly to the GET action/file resolution mechanism.
 
 HEAD follows the same resource resolution path as GET, but removes the response body before sending the response.
 
-The response headers are retained. fileciteturn0file2L521-L570
+The response headers are retained. 
 
 ## POST
 
@@ -671,7 +671,7 @@ Responses are constructed manually.
 5. Adds configured response headers.
 6. Adds one `Set-Cookie` header for each queued cookie.
 7. Adds the final CRLF separator.
-8. Appends the response body. fileciteturn0file2L171-L204
+8. Appends the response body. 
 
 The response is stored in:
 
@@ -1606,13 +1606,13 @@ libssl.so.3
 libcrypto.so.3
 ```
 
-These were recorded by the kernel while the application was running. fileciteturn0file0L701-L850
+These were recorded by the kernel while the application was running.
 
 The recorded events occurred in threads whose names indicate HTTP handling.
 
 This is significant because ordinary Python exceptions do not normally produce native-library segmentation faults. A native crash therefore warrants investigation at the Python/OpenSSL/cryptography/TLS boundary rather than treating it as an ordinary HTTP application exception.
 
-The architecture record also notes that `coredumpctl` was not installed at the time of capture. fileciteturn0file0L701-L850
+The architecture record also notes that `coredumpctl` was not installed at the time of capture.
 
 Recommended diagnostic tooling for a future reproduction:
 
